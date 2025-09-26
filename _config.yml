@@ -1,0 +1,7 @@
+title: Gahingwoo's GitHub Projects
+description: A list of all my GitHub repositories
+theme: minima
+plugins:
+  - jekyll-github-metadata
+github:
+  username: gahingwoo
