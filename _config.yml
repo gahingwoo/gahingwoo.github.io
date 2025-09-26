@@ -1,7 +1,11 @@
-title: Gahingwoo's GitHub Projects
+title: Ga Hing Woo's GitHub Projects
 description: A list of all my GitHub repositories
 theme: minima
 plugins:
   - jekyll-github-metadata
 github:
   username: gahingwoo
+
+header_pages:
+  - index.md
+  - profile.md
