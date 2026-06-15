@@ -1,0 +1,36 @@
+baseURL = "https://gahingwoo.github.io/"
+languageCode = "en-us"
+title = "Gahing's Space"
+theme = "PaperMod"
+
+[pagination]
+  pagerSize = 10
+
+[params]
+  author = "Jiaxing Hu (Ga Hing Woo)"
+  description = "Embedded Linux, firmware, and the gaps between hardware and mainline."
+  defaultTheme = "auto"
+  ShowReadingTime = true
+  ShowShareButtons = false
+  ShowPostNavLinks = true
+  ShowBreadCrumbs = false
+  ShowCodeCopyButtons = true
+  ShowToc = true
+  TocOpen = false
+
+[params.homeInfoParams]
+  Title = "Jiaxing Hu (Ga Hing Woo)"
+  Content = "Embedded Linux · Firmware · Upstream kernel contributor · OP-TEE · RK3576"
+
+[[params.socialIcons]]
+  name = "github"
+  url = "https://github.com/gahingwoo"
+
+[markup]
+  [markup.highlight]
+    style = "github-dark"
+    lineNos = true
+    lineNumbersInTable = true
+
+[markup.goldmark.renderer]
+  unsafe = true
