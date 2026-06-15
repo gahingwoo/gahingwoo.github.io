@@ -9,19 +9,38 @@ ShowReadingTime: false
 
 # Ga Hing Woo (Jiaxing Hu)
 
-Final-year high school student preparing to begin university. I work on low-level
-firmware, embedded Linux, and ARM platform bring-up, especially around the Rockchip
-RK3576.
+Hi — I'm Ga Hing Woo. I'm finishing high school and about to start university, and in
+the meantime I spend an unreasonable amount of my free time at the very bottom of the
+software stack: firmware, embedded Linux, and bringing up ARM SoCs that don't quite
+work yet. Lately that's meant living inside the Rockchip RK3576.
 
-- Built RK3576 software stacks across TF-A, OP-TEE, U-Boot, EDK2/UEFI, Linux device
-  trees, desktop OS support, and NPU bring-up.
-- Upstreamed a Trusted Firmware-A RK3576 fix after review by engineers from
-  STMicroelectronics, Google, and Rockchip.
-- Developed OP-TEE RK3576 platform support and Secure OTP/HUK integration; the platform
-  port passed checks, was reproduced on hardware, and is approved pending merge.
-- Created tools for SoC device-tree consistency checking and Rockchip firmware flashing.
+I like the layer where there's no app, no framework, sometimes no documentation — just
+a board, a serial console, and a peripheral that refuses to cooperate. Most of what I
+do is the same loop: form a theory, flash it, watch what the hardware *actually* does,
+and let it tell me I was wrong. I usually am, for a while. That's the fun part.
 
-## Selected work
+So far that loop has taken me across most of the RK3576 boot chain and back:
+
+- **TF-A** — upstreamed a fix to Trusted Firmware-A, reviewed by engineers from
+  STMicroelectronics, Google, and Rockchip. (My first upstream patch was a one-line
+  deletion. It still got read three times. Good lesson.)
+- **OP-TEE** — wrote the RK3576 secure-world platform port: memory map, hardware TRNG,
+  OTP-derived keys, secure boot. Reproduced on hardware, approved pending merge.
+- **EDK2 / UEFI** — a real UEFI firmware for the board, which meant teaching it to drive
+  HDMI, USB, and eMMC, each of which broke in its own special way.
+- **U-Boot & Linux** — device trees, board bring-up, and the small fixes that turn
+  "it boots" into "it actually works."
+- **NPU** — bringing up the RK3576's neural accelerator on the open-source `rocket`
+  driver. This one's an ongoing fight and probably my favourite.
+
+I also build tools when the existing ones annoy me — a device-tree consistency checker
+for SoCs, and a cross-platform GUI for flashing Rockchip firmware.
+
+I write most of this up on the [blog](/posts/) — the wrong turns included, because
+that's where the actual story is. If any of it is useful to you, or you're poking at
+the same hardware, I'd genuinely like to hear from you.
+
+## Things I've built
 
 [edk2-rk3576](https://github.com/gahingwoo/edk2-rk3576) ·
 [bl32-rk3576](https://github.com/gahingwoo/bl32-rk3576) ·
@@ -29,13 +48,13 @@ RK3576.
 [SoC-Consistency](https://github.com/gahingwoo/SoC-Consistency) ·
 [RKDevelopTool-GUI](https://github.com/gahingwoo/RKDevelopTool-GUI)
 
-## Contact
-
-[huhuvmb88@outlook.com](mailto:huhuvmb88@outlook.com)
-
-## References
+## Upstream
 
 [OP-TEE PR #7821](https://github.com/OP-TEE/optee_os/pull/7821) ·
 [OP-TEE PR #7841](https://github.com/OP-TEE/optee_os/pull/7841) ·
-[TF-A Gerrit #51089](https://review.trustedfirmware.org/c/TF-A/trusted-firmware-a/+/51089) ·
-[Project pages](https://gahingwoo.github.io/)
+[TF-A Gerrit #51089](https://review.trustedfirmware.org/c/TF-A/trusted-firmware-a/+/51089)
+
+## Say hi
+
+[huhuvmb88@outlook.com](mailto:huhuvmb88@outlook.com) ·
+[github.com/gahingwoo](https://github.com/gahingwoo)
