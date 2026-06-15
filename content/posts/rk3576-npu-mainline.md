@@ -180,32 +180,94 @@ DRAM. Weights actually fetched. All four units engaged. After two weeks of zeros
 convolution ran on the silicon. The whole approach — offset remap, in-stream arming,
 patched DMA addresses — proven on hardware.
 
-After that it was grind, layer by layer, each one checked offline against a reference
-stream before flashing:
+That was layer 0. The rest of the chain — depthwise, pointwise, the lot — was a
+second act of its own, and it had more walls in it than I expected.
 
-- one encoder for normal *and* depthwise convs (depthwise needs the *real* channel
-  counts, not the aligned/doubled ones Mesa uses internally — sneaky little bug that
-  only bites once the chain reaches a depthwise layer)
-- CBUF row-windowing for the 112-wide layers — the toolkit streams those in row
-  windows shorter than the full height and dispatches them as multiple passes; Mesa
-  already had multi-task infra, so the vendor's windows map straight onto it
-- the DPU output-side heights had to go window-aware too, or the output stage expects
-  a different shape than the windowed input makes — and stalls again, one stage later
+## Getting the whole chain to engage
+
+For a while only the first conv wrote; every layer after it went back to zeros. Four
+separate things were holding the rest of the chain down, and each one looked like the
+last bug right up until it wasn't:
+
+- **Task-chaining corruption.** Mesa chains multi-task jobs the RK3588 way — it ORs the
+  next task's command address into the last two command entries, assuming those are the
+  chaining slots. On RK3576 my command stream *ends in real RDMA registers*, so that
+  "chaining" was scribbling an IOVA over a live DMA register and killing the write. The
+  RK3576 kernel dispatches each task separately anyway (its own base address + op_en
+  pulse), so the fix was: don't chain in-stream at all on RK3576. One unit's worth of
+  silent corruption, gone.
+- **The depthwise weight layout.** Depthwise layers hung outright. The CORE never
+  opened — it sat waiting on weights it couldn't consume. RK3576 packs depthwise weights
+  as spatial row-major blocks, two channels at a time with two zero-point pad bytes each
+  (so a 32-channel 3×3 is 9 blocks × 64 bytes = 576 bytes, which is exactly what the CNA
+  weight-size register asks for). Mesa was handing it a layout the convolution MAC
+  couldn't read. That was the hang.
+- **Ping-pong parity.** I burned a good while convinced the producer/consumer groups
+  were desyncing per task — built a whole parity scheme in the kernel to alternate the
+  pointer. Wrong: the working sequence keeps the pointer at group 0 *every* task and
+  re-arms it per task. I'd been adding cleverness the hardware didn't want. Ripped it
+  back out and forced group 0 to match.
+- **The "windowed" mode that wasn't.** Mesa tiles the 112-wide layers into short row
+  windows with a "capped" flag set. On RK3576 that capped mode just makes the DPU write
+  nothing. A single full-height window (112 rows — it fits the RK3576 CBUF fine) makes
+  depthwise and pointwise write. So the fix was *less* tiling, not more.
+
+After those: conv0, depthwise, and pointwise all engage and all write varying output.
+The engage wall — the entire subject of everything above — is finally behind me. Which
+is a great feeling for about a day, until you look at the actual numbers.
+
+## Running, but wrong
+
+The NPU now computes a full chain. The output is still wrong — just wrong in a much more
+interesting way than zeros. Layer 0's output comes back almost entirely `0x7f`:
+saturated, pinned to the max. It's doing arithmetic, the arithmetic is just blowing past
+the range.
+
+To even see this I had to stop trusting the board's own debug registers — half of them
+lie. The DPU destination registers are write-only and read back garbage; the
+write-combining readback I'd relied on returns null on system RAM. The only honest
+signal is a cache-invalidated DRAM dump of each task's real output address, plus a pure
+numpy reference of the quantized model computed offline. With those two side by side the
+saturation was obvious.
+
+Root cause: **asymmetric weight zero-points.** MobileNet's weights are quantized with
+per-tensor zero-points all over the map — 74, 95, 122, 151, 211 — almost none of them
+the symmetric 128. Mesa centers weights at a fixed 128 and only corrects the *input*
+zero-point in the bias. The leftover weight-zero-point term is a per-output-pixel
+quantity nobody is subtracting, so the accumulator runs tens of thousands of counts hot
+and clamps.
+
+The genuinely surprising part — and the thing I'd never have guessed without comparing
+against a captured working stream — is *where* the hardware expects that correction. It
+is **not in the command stream and not in the weight values.** I proved that with a pair
+of differential test convs (one symmetric, one all-positive zero-point): byte-identical
+command streams, identically-centered weights. The weight zero-point is handled
+data-side, in a per-channel coefficient table tucked into a bias buffer the
+convolution's accumulator reads. Mesa allocates that buffer too small and fills in only
+part of it. I've got the buffer's structure mostly decoded — per-eight-channel groups,
+a per-channel offset field plus a couple of per-layer fields that encode the
+requant/zero-point math — and a couple more differential captures should pin the last
+field's meaning. Then it's a matter of having Mesa compute and emit the full table the
+way the hardware wants it.
 
 ## For mainline
 
-It's a Mesa Teflon change (RK3576 encoders, CBUF geometry, SoC detection) plus a small
-kernel submit fix. All gated so the **RK3588 path stays byte-for-byte identical** —
-the SoC is detected at runtime from the device `compatible` string, RK3576 encoders
-only kick in on RK3576. RK3588 users notice nothing.
+What's upstream-shaped already is a Mesa Teflon change (the RK3576 encoders, CBUF
+geometry, SoC detection) plus a small kernel submit fix. All of it gated so the
+**RK3588 path stays byte-for-byte identical** — the SoC is detected at runtime from the
+device `compatible` string and the RK3576 encoders only kick in on RK3576. RK3588 users
+notice nothing.
 
-Everything here came the slow way: instrument, guess, flash, read the counters, let
-the hardware tell you you're wrong. Most of my guesses were. The performance counters
-never were — `dt_wr = 0` meant no compute no matter how clever I felt, and `dt_wr =
-25088` meant it finally ran. With no public register docs, those counters were the one
-witness that couldn't lie.
+Everything here came the slow way: instrument, guess, flash, read the counters, let the
+hardware tell you you're wrong. Most of my guesses were. The performance counters never
+were — `dt_wr = 0` meant no compute no matter how clever I felt, `dt_wr = 25088` meant
+it finally ran, and now a cache-invalidated DRAM dump versus an offline reference is the
+witness for whether the *values* are right. With no public register docs, those honest
+signals are the whole game; everything I believed in between was provisional.
 
-Still on the list before the *values* are correct (not just the shapes): pinning the
-quantization registers to the right RK3576 offsets so the numbers match, and windowing
-the one stride-2 112→56 layer that still falls through. The chain runs; making every
-number bit-exact is the next post.
+So the state of it: the silicon runs every layer type and writes real, varying data —
+the hard "does it compute at all" question is answered. What's left is quantization
+correctness: finishing the per-channel weight-zero-point table so the numbers match the
+reference, and re-deriving the first conv's quantization (it's still a hardcoded
+stopgap from early bring-up). The chain runs end to end. Making every number bit-exact
+is the part I'm on now.
