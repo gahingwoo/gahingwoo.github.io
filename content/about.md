@@ -29,6 +29,10 @@ RK3576.
 [SoC-Consistency](https://github.com/gahingwoo/SoC-Consistency) ·
 [RKDevelopTool-GUI](https://github.com/gahingwoo/RKDevelopTool-GUI)
 
+## Contact
+
+[huhuvmb88@outlook.com](mailto:huhuvmb88@outlook.com)
+
 ## References
 
 [OP-TEE PR #7821](https://github.com/OP-TEE/optee_os/pull/7821) ·

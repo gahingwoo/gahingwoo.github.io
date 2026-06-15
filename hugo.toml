@@ -26,6 +26,10 @@ theme = "PaperMod"
   name = "github"
   url = "https://github.com/gahingwoo"
 
+[[params.socialIcons]]
+  name = "email"
+  url = "mailto:huhuvmb88@outlook.com"
+
 [markup]
   [markup.highlight]
     style = "github-dark"
