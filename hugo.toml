@@ -19,8 +19,8 @@ theme = "PaperMod"
   TocOpen = false
 
 [params.homeInfoParams]
-  Title = "Jiaxing Hu (Ga Hing Woo)"
-  Content = "Embedded Linux · Firmware · Upstream kernel contributor · OP-TEE · RK3576"
+  Title = "Ga Hing Woo (Jiaxing Hu)"
+  Content = "Low-level firmware · Embedded Linux · ARM bring-up · Rockchip RK3576 — TF-A · OP-TEE · U-Boot · EDK2/UEFI · NPU"
 
 [[params.socialIcons]]
   name = "github"
