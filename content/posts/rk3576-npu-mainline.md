@@ -244,11 +244,27 @@ of differential test convs (one symmetric, one all-positive zero-point): byte-id
 command streams, identically-centered weights. The weight zero-point is handled
 data-side, in a per-channel coefficient table tucked into a bias buffer the
 convolution's accumulator reads. Mesa allocates that buffer too small and fills in only
-part of it. I've got the buffer's structure mostly decoded — per-eight-channel groups,
-a per-channel offset field plus a couple of per-layer fields that encode the
-requant/zero-point math — and a couple more differential captures should pin the last
-field's meaning. Then it's a matter of having Mesa compute and emit the full table the
-way the hardware wants it.
+part of it.
+
+A handful more differential captures later — the trick is convs with constant
+per-channel weights, so the per-layer fields stay clean while the per-channel ones go
+flat — and the buffer fully gave up its structure. It's groups of eight output
+channels, 64 bytes each, laid out as eight 32-bit fields, then eight 16-bit, then eight
+more 16-bit. The 16-bit one is just `(128 − weight_zero_point)`, the exact correction
+that was missing. The 32-bit field is that times the per-channel weight sum, pre-scaled.
+The last field folds in the input zero-point. The hardware computes a per-output-pixel
+input sum on its own and combines all of it: `result = Σ(in−128)(w−128) +
+(128−wt_zp)·input_sum + bias`. I worked the algebra through against the offline
+reference and it lands exactly. So I rewrote Mesa to emit the whole table.
+
+And the output flipped — from saturated *high* (`0x7f`) to saturated *low*, pinned at
+the layer's zero-offset. Which is, weirdly, great news: same clamp, opposite end. It
+means the correction term is real and active and now slightly *too strong* rather than
+absent — the difference between "you forgot a term" and "you have the term, off by a
+constant." That constant looks like a factor of 128 in how the corrected accumulator is
+scaled before requantization: the shift that converts back to 8-bit needs to account
+for it. That's where I am right now — chasing one power-of-two between the accumulator
+and the requant step, with the offline reference telling me byte by byte how close I am.
 
 ## For mainline
 
@@ -265,9 +281,10 @@ it finally ran, and now a cache-invalidated DRAM dump versus an offline referenc
 witness for whether the *values* are right. With no public register docs, those honest
 signals are the whole game; everything I believed in between was provisional.
 
-So the state of it: the silicon runs every layer type and writes real, varying data —
-the hard "does it compute at all" question is answered. What's left is quantization
-correctness: finishing the per-channel weight-zero-point table so the numbers match the
-reference, and re-deriving the first conv's quantization (it's still a hardcoded
-stopgap from early bring-up). The chain runs end to end. Making every number bit-exact
-is the part I'm on now.
+So the state of it: the silicon runs every layer type, writes real varying data, and
+now applies the right per-channel quantization correction — the two big "does it even
+work" questions, engage and the missing zero-point term, are both answered. What's left
+is one scaling constant between the corrected accumulator and the 8-bit requant, plus
+re-deriving the first conv's quantization (still a hardcoded stopgap from early
+bring-up). The clamp flipped from one end of the range to the other; the next move
+lands it in the middle, where the real numbers live. That's the part I'm on now.
