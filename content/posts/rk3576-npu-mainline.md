@@ -263,8 +263,92 @@ means the correction term is real and active and now slightly *too strong* rathe
 absent — the difference between "you forgot a term" and "you have the term, off by a
 constant." That constant looks like a factor of 128 in how the corrected accumulator is
 scaled before requantization: the shift that converts back to 8-bit needs to account
-for it. That's where I am right now — chasing one power-of-two between the accumulator
-and the requant step, with the offline reference telling me byte by byte how close I am.
+for it. I had it pegged as the last mile.
+
+## The conv wasn't even convolving
+
+It wasn't, and what set me straight was a one-line change to my debug dump: print the
+number of *distinct* values in each output, not just the first few bytes.
+
+Conv0's output had **two distinct values.** Two. The entire 112×112×32 feature map was
+`0x7f` and `0x80` — plus or minus one constant magnitude, sign flipping per pixel. That
+is not a quantization-scaling problem. A real convolution produces a spread of
+magnitudes; ±one constant means the MAC array was never spatially convolving the image
+at all. Everything I'd been doing to the requant math was downstream of a conv that
+wasn't happening. The clamp had flipped ends because the bias work *was* real — but it
+was correcting a result that was garbage to begin with.
+
+So I did the thing I should have done sooner: a full register-by-register diff of my
+conv0 command stream against the captured vendor one, runtime addresses aside. One line
+differed.
+
+```
+CNA 0x1064 (feature data offset)   vendor = 0   mine = 0x777
+```
+
+`0x777` is 1911. It was offsetting the feature fetch by 1911 bytes, so the MAC array
+convolved the wrong data — the same wrong data everywhere, hence ±one constant. A
+transcription typo in the hardcoded first-conv block; the normal-path encoder already
+had it right at 0. Set it to 0, flash, and conv0's distinct-value count jumped from
+**2 to 154** — a real, full-range feature map.
+
+(That same diff also retired a "fix" I'd been proud of: computing the first conv's
+requant from the model scales. The captured stream showed the original hardcoded values
+were correct all along — the saturation I'd blamed on requant was *always* FC_CON1. I
+reverted my own clever change. The detective work doesn't just find bugs; it finds the
+ones you introduced chasing the wrong theory.)
+
+## The vendor tiles; I didn't
+
+Conv0 bloomed, and the chain promptly broke one layer later: the first depthwise came
+out with five distinct values and everything after it went to zero. Same shape — good
+input, good weights, degenerate output — so, same move: capture the vendor running the
+*actual* chain and diff.
+
+The vendor splits every 112-wide layer into **two row-windows** — about 90 rows, then
+the remaining 22 — and runs each as its own task. I was running the whole layer as one
+112-row window, on the theory that it fit the on-chip CBUF. It doesn't. The window
+overran the buffer, the MAC read stale data, and the layer came out degenerate. The fix
+was *more* tiling, not a register value: a greedy row-window split matching the vendor's,
+plus correcting a batch of windowed-mode register values I'd had wrong. The encoder now
+matches the captured vendor stream byte-for-byte on every windowed register, both
+windows. Done and pushed.
+
+## The real shape of it: one submit, not many
+
+Then conv0 started flickering. Same command stream, same input image, and run to run it
+gave me either the good 154-distinct map or the degenerate two values. That
+non-determinism sent me down a long, instructive hole. I tried resetting the NPU between
+runs — which wedged the IOMMU, because the reset line I had also resets the tightly
+coupled IOMMU and the next job can't attach. I tried disabling autosuspend, soft
+re-initing the ping-pong state, a warmup-retry that re-runs the first task. Each one
+broke something else or fixed exactly half the problem — the geometry would latch, but
+the compute core still wouldn't turn on.
+
+That clue — geometry present, core won't engage — is what finally cracked it. I captured
+how the vendor *dispatches* the graph. Not the register contents this time; the dispatch
+itself. And the difference was the whole game:
+
+```
+vendor : one submit, task_number = 8   (the entire graph, pipelined)
+mine   : one submit per task, task_number = 1
+```
+
+The vendor hands the command processor the **whole network at once** and lets it stream
+through all eight tasks as one flowing ping-pong pipeline. The first conv is task 0 of a
+pipeline that's already moving — it warms and engages naturally. I was submitting one
+isolated task per job, so my first conv was always task 0 on a *cold* pipeline, and a
+cold first task on this hardware never lights its compute core. The flicker, the
+`CORE_OPEN = 0`, all of it: not a value anywhere, but the *shape* of how work reaches the
+chip.
+
+The bitter part: earlier in this project I'd made a deliberate call to *not* chain
+tasks — "let the kernel dispatch them one at a time, simpler." The vendor capture says
+that was exactly the wrong turn. The hardware wants the pipeline. So the current work is
+reworking dispatch to submit the whole graph as a single pipelined job — which has
+already collapsed one inference from 500-odd jobs to a single submit, with the last
+detail (making every task in that pipeline land on the right ping-pong group) being what
+I'm on now.
 
 ## For mainline
 
@@ -281,10 +365,13 @@ it finally ran, and now a cache-invalidated DRAM dump versus an offline referenc
 witness for whether the *values* are right. With no public register docs, those honest
 signals are the whole game; everything I believed in between was provisional.
 
-So the state of it: the silicon runs every layer type, writes real varying data, and
-now applies the right per-channel quantization correction — the two big "does it even
-work" questions, engage and the missing zero-point term, are both answered. What's left
-is one scaling constant between the corrected accumulator and the 8-bit requant, plus
-re-deriving the first conv's quantization (still a hardcoded stopgap from early
-bring-up). The clamp flipped from one end of the range to the other; the next move
-lands it in the middle, where the real numbers live. That's the part I'm on now.
+So the state of it: every layer type computes, the quantization math is right where I
+can see it, and the big register typo and the missing tiling are fixed and matched
+byte-for-byte against the hardware's own reference stream. The remaining wall is
+structural, not numerical — dispatching the graph the way the NPU actually wants it, as
+one pipeline rather than a stream of cold single-task jobs. That single reframe folded a
+pile of problems I'd been treating separately — the flickering first conv, the cores
+that wouldn't engage, even an old decision I'd been sure was right — into one shape: feed
+the chip the whole network at once. Getting that pipeline to land every task on the
+right ping-pong group is the part I'm on now. It's the closest the board has been to a
+real classification.
