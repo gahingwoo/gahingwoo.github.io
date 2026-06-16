@@ -13,7 +13,9 @@ piece of that plumbing has a way to go silently wrong, and "silently" is the ope
 word here, because the first problem was literally silence.
 
 Target: Radxa Rock 4D (RK3576), firmware on SPI, kernel + an xtest initramfs off SD.
-The port went up as OP-TEE PR #7821.
+The base platform support went up as OP-TEE PR #7821 — and it's now **merged into
+mainline OP-TEE**. The OTP key-derivation half got split into its own follow-up
+(#7841), still in review; there's a good reason it's separate, and it's below.
 
 ## The memory map, first
 
@@ -118,3 +120,9 @@ None of those were bugs in the usual sense. They were the difference between "co
 on my board" and "safe to put in front of strangers' boards." That gap is the whole job.
 The patch that merges is the one where you've already answered the question the reviewer
 was about to ask.
+
+And it did merge — #7821 is in mainline OP-TEE now, so the RK3576 has secure-world
+support out of the box. The OTP key-derivation half is still working through review as
+#7841, which is exactly the split the reviewers asked for: the irreversible,
+fuse-burning part gets its own scrutiny instead of riding in on the back of "add a
+platform." That's not the review being slow. That's the review being right.

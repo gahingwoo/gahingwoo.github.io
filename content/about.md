@@ -25,7 +25,8 @@ So far that loop has taken me across most of the RK3576 boot chain and back:
   STMicroelectronics, Google, and Rockchip. (My first upstream patch to a security
   project.)
 - **OP-TEE** — wrote the RK3576 secure-world platform port: memory map, hardware TRNG,
-  OTP-derived keys, secure boot. Reproduced on hardware, approved pending merge.
+  OTP-derived keys, secure boot. The base platform support is **merged into mainline
+  OP-TEE**; the OTP key-derivation follow-up is still in review.
 - **EDK2 / UEFI** — a real UEFI firmware for the board, which meant teaching it to drive
   HDMI, USB, and eMMC, each of which broke in its own special way.
 - **U-Boot & Linux** — device trees, board bring-up, and the small fixes that turn
