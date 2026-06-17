@@ -389,6 +389,45 @@ ping-pong reading the same data for the first time. It's not all the way to a re
 yet; the output is still flat and I'm still chasing the last step. But after a week of
 mislabelling it a dispatch problem, it's finally the *right* wall.
 
+## The cores wake up
+
+Two more fixes and the wall finally moved. The per-job ping-pong CLEAR got the geometry
+into the group the executer reads; an IOMMU change got the rest of the chain to stop
+tripping over itself.
+
+The IOMMU one was its own small saga. rocket attached the NPU's address-translation
+domain at the start of every job and detached it at the end — and every attach re-runs a
+raw MMU reset. The moment anything had disturbed that MMU (an NPU reset, or the CBUF
+reset that shares a bank with it), the raw reset failed and the entire NPU register range
+went dead with a cascade of attach failures. That was the `-14` wall I kept hitting every
+time I tried to reset between jobs. The fix is to attach *once* and keep it — only
+re-attach when the address space actually changes, and drop it on power-down so the next
+attach always runs on a freshly-powered, clean MMU. After it: a full inference, every
+layer, **zero IOMMU faults, zero raw-reset errors, zero timeouts.** It mirrors what the
+vendor driver (and the RK3568 rocket port) always did; I'd just been doing it the
+expensive, fragile way.
+
+With both in, the compute cores wake up for real. The status register climbed off the
+hollow `0x0c` to `0x0a`, the CORE and DPU report open, and — the signal I actually
+trust — the per-layer feature reads now *vary* from layer to layer instead of sitting at
+a constant overhead value. The cores are pulling real, different feature data for each
+layer and running it through the MAC array. That's the compute path genuinely alive, not
+a command processor draining a list.
+
+I also formally backed the whole-graph dispatch experiment out of the code. The command
+processor doesn't iterate the task count on this hardware, so there was never a pipeline
+to win, and per-layer dispatch runs cleaner. Last post's confident theory isn't just
+wrong in prose now; it's reverted in the tree, which is the honest place for it.
+
+The output still reads back zero.
+
+So I'm back, almost poetically, at the very first question this whole project opened
+with — the result gets computed, the silicon writes it, and somewhere between the NPU's
+DRAM write and my read it comes home as zeros. Except this time what's underneath is
+real: cores engaged, weights fetched, per-layer reads varying, not a fault in sight. The
+zeros no longer mean "nothing ran." They mean "something ran and I'm losing it on the way
+back" — which, after all of this, is a far shorter wall.
+
 ## For mainline
 
 What's upstream-shaped already is a Mesa Teflon change (the RK3576 encoders, CBUF
@@ -404,12 +443,11 @@ it finally ran, and now a cache-invalidated DRAM dump versus an offline referenc
 witness for whether the *values* are right. With no public register docs, those honest
 signals are the whole game; everything I believed in between was provisional.
 
-So the state of it: every layer type computes, the quantization math is correct where I
-can see it, and the register typo and the missing tiling are fixed and matched
-byte-for-byte to the hardware's own reference. The live wall is the ping-pong parity —
-getting the executer to run the group the config was actually written into, on every job
-and not just the first after power-on. That moved the status register the right way this
-week, from a hollow `0x0c` toward a real one; the next step is turning a half-aligned
-executer into an engaged one. When it opens, the chain that's been waiting downstream
-finally gets fed something real, and the board does the thing it's been refusing to do
-since job one. Not there yet. Closer than the dispatch detour made it look.
+So the state of it: the compute path is alive. Cores engage, weights load, every layer
+reads its own real feature data, and a whole inference runs without a single IOMMU fault
+or timeout — the ping-pong parity and the IOMMU cascade that ate most of this month are
+both behind me. What's left is the last hop: the NPU computes and writes, but the result
+arrives at the CPU as zeros. So the next hunt is whether the written output survives the
+trip — cache and addressing between the NPU's DRAM write and my read — or whether the
+chain is only carrying the first layer's worth through. Closer than it's ever been: the
+"does it even compute" era is over, and what remains is getting the answer out intact.
