@@ -344,11 +344,50 @@ chip.
 
 The bitter part: earlier in this project I'd made a deliberate call to *not* chain
 tasks — "let the kernel dispatch them one at a time, simpler." The vendor capture says
-that was exactly the wrong turn. The hardware wants the pipeline. So the current work is
-reworking dispatch to submit the whole graph as a single pipelined job — which has
-already collapsed one inference from 500-odd jobs to a single submit, with the last
-detail (making every task in that pipeline land on the right ping-pong group) being what
-I'm on now.
+that was exactly the wrong turn. The hardware wants the pipeline. So I reworked dispatch
+to submit the whole graph as a single job — which collapsed one inference from 500-odd
+jobs to a single submit, and felt like the answer.
+
+It wasn't.
+
+## It wasn't the dispatch after all
+
+The whole-graph submit works, mechanically. Conv0 came out degenerate anyway.
+
+Two things forced a humbler read. First, rocket's command processor doesn't actually
+iterate `task_number` on its own — one enable pulse runs about one task, so the
+"pipeline" I'd pictured wasn't even happening the way I imagined. Second, and this is the
+one that should have stopped me a week earlier: a full 139-entry diff said my conv0
+command stream is byte-for-byte identical to the vendor's — every register, every
+geometry word, only the runtime addresses different. If the bytes are identical and it
+still fails, the bug isn't in the bytes, and it isn't in how I hand them over. It's in
+the *execution state* those bytes run against.
+
+So I stopped dumping registers after the job and started sampling them *during* it —
+specifically, which ping-pong group the executer is actually reading while it runs. The
+answer, at last:
+
+```
+geometry written → producer group (group 0)
+executer reading → consumer group (group 1, empty)
+```
+
+The hardware double-buffers convolution config across two ping-pong groups. My command
+stream writes the geometry into one group; the executer was running the *other* one,
+which had nothing in it. So it engaged, found an empty config, raised "done" within a
+microsecond, and wrote flat garbage. Every after-the-fact dump had missed it because by
+the time the job ended the pointer had already moved — you can only catch it mid-run.
+This was never the dispatch model and never the regcmd content. It's a producer/consumer
+parity bug that had been hiding under every theory I'd had, including the confident one
+in the section right above this.
+
+The fix is almost embarrassingly small after all that: re-run the ping-pong CLEAR at the
+head of *every* job, not just once at power-on, so the producer and consumer pointers
+realign onto the same group. With it, the geometry lands where the executer looks, and
+the CNA status register moved from `0x0c` (hollow) to `0x08` — the two halves of the
+ping-pong reading the same data for the first time. It's not all the way to a real "open"
+yet; the output is still flat and I'm still chasing the last step. But after a week of
+mislabelling it a dispatch problem, it's finally the *right* wall.
 
 ## For mainline
 
@@ -365,13 +404,12 @@ it finally ran, and now a cache-invalidated DRAM dump versus an offline referenc
 witness for whether the *values* are right. With no public register docs, those honest
 signals are the whole game; everything I believed in between was provisional.
 
-So the state of it: every layer type computes, the quantization math is right where I
-can see it, and the big register typo and the missing tiling are fixed and matched
-byte-for-byte against the hardware's own reference stream. The remaining wall is
-structural, not numerical — dispatching the graph the way the NPU actually wants it, as
-one pipeline rather than a stream of cold single-task jobs. That single reframe folded a
-pile of problems I'd been treating separately — the flickering first conv, the cores
-that wouldn't engage, even an old decision I'd been sure was right — into one shape: feed
-the chip the whole network at once. Getting that pipeline to land every task on the
-right ping-pong group is the part I'm on now. It's the closest the board has been to a
-real classification.
+So the state of it: every layer type computes, the quantization math is correct where I
+can see it, and the register typo and the missing tiling are fixed and matched
+byte-for-byte to the hardware's own reference. The live wall is the ping-pong parity —
+getting the executer to run the group the config was actually written into, on every job
+and not just the first after power-on. That moved the status register the right way this
+week, from a hollow `0x0c` toward a real one; the next step is turning a half-aligned
+executer into an engaged one. When it opens, the chain that's been waiting downstream
+finally gets fed something real, and the board does the thing it's been refusing to do
+since job one. Not there yet. Closer than the dispatch detour made it look.
