@@ -298,6 +298,11 @@ were correct all along — the saturation I'd blamed on requant was *always* FC_
 reverted my own clever change. The detective work doesn't just find bugs; it finds the
 ones you introduced chasing the wrong theory.)
 
+*Update, weeks on: this one didn't survive either. The vendor's real value turned out to
+be `0x777` — I'd had the direction backwards — and conv0 never reliably held that
+154-distinct map. The bloom was a flicker, not a fix, and the real wall was somewhere I
+hadn't thought to look yet. It comes back at the end.*
+
 ## The vendor tiles; I didn't
 
 Conv0 bloomed, and the chain promptly broke one layer later: the first depthwise came
@@ -428,6 +433,57 @@ real: cores engaged, weights fetched, per-layer reads varying, not a fault in si
 zeros no longer mean "nothing ran." They mean "something ran and I'm losing it on the way
 back" — which, after all of this, is a far shorter wall.
 
+## One-sixteenth of a convolution
+
+I left the last section at "the NPU computes, but I'm losing the result on the way back
+to the CPU." Wrong about that too — and I found out by going to look at the vendor's
+*output* instead of theorising about mine.
+
+I instrumented the vendor's own driver to dump conv0's output buffer straight after the
+run. The vendor produces a real feature map — bytes like `81 83 86 88` rippling around
+the `0x80` zero-point. Rocket, same conv: `80 7f 80 80`, zero-point noise. So rocket
+genuinely *computes* near-zero. Not a readback artifact, not a cache problem, not an
+address problem — the number that lands in DRAM really is wrong. The "losing it on the
+way home" theory died on the spot.
+
+For a couple of days after that I was sure conv0 was gated on something deep and ugly:
+the on-chip buffer needs a full reset to initialise, the vendor does that inside a
+whole-NPU soft-reset, and rocket can't because that reset also knocks over the shared
+IOMMU and the mainline IOMMU driver doesn't come back. I wrote it up as a "final
+diagnosis" — a driver-level wall, weeks of work. It had the ring of a final diagnosis,
+which is mostly what being tired sounds like.
+
+Then I re-audited the logs with two of the simplest numbers I had, and the whole final
+diagnosis evaporated.
+
+```
+input read   :  9408  = 150528 / 16   (full conv0 input  ÷ 16)
+output write : 25088  = 401408 / 16   (full conv0 output ÷ 16)
+```
+
+Both counters, independently, sitting at exactly one-sixteenth. Conv0 has 32 output
+channels; a sixteenth of the work is **2 of them.** The NPU wasn't failing to compute —
+it was computing *two channels out of thirty-two* and leaving the other thirty parked at
+the zero-point. That's the ±constant output, finally explained: not garbage, a real but
+brutally truncated convolution.
+
+Why two? The register carrying the output-channel count never reached the ping-pong
+group the executer ran. The per-group readback shows conv0's channel-count field still
+holding `0x80000000` — the *power-on default* the ping-pong init writes — instead of the
+value conv0's command stream set. And here's the part that stings: this is the same
+producer/consumer parity bug I was so pleased to have fixed two sections ago. I fixed it
+for every job *except the first.* My per-job re-init writes that default into **both**
+ping-pong groups, and on the very first job after a fresh init the executer reads the
+group still holding the default rather than the one the command stream just wrote.
+Conv1, conv2, every later layer latches fine. Conv0 — the one layer the entire rest of
+the network stands on — runs on the defaults and does a sixteenth of its job.
+
+So the wall was never the IOMMU, never a full reset, never the weights, the dispatch, or
+the readback. It's one register not reaching one group, on one job. The cheap test —
+submit conv0 twice and see if the second pass writes all 32 channels — is what I'm on
+now; if it does, the fix is just pointing the first job's executer at the group its own
+command stream wrote.
+
 ## For mainline
 
 What's upstream-shaped already is a Mesa Teflon change (the RK3576 encoders, CBUF
@@ -444,10 +500,13 @@ witness for whether the *values* are right. With no public register docs, those 
 signals are the whole game; everything I believed in between was provisional.
 
 So the state of it: the compute path is alive. Cores engage, weights load, every layer
-reads its own real feature data, and a whole inference runs without a single IOMMU fault
-or timeout — the ping-pong parity and the IOMMU cascade that ate most of this month are
-both behind me. What's left is the last hop: the NPU computes and writes, but the result
-arrives at the CPU as zeros. So the next hunt is whether the written output survives the
-trip — cache and addressing between the NPU's DRAM write and my read — or whether the
-chain is only carrying the first layer's worth through. Closer than it's ever been: the
-"does it even compute" era is over, and what remains is getting the answer out intact.
+reads its own real feature data, a whole inference runs without a single IOMMU fault or
+timeout. And the first conv — the one everything downstream waits on — is computing
+exactly two of its thirty-two channels, because one register doesn't reach the right
+ping-pong group on the very first job. That's a precise, small, *findable* bug, a world
+away from the driver rewrite I'd talked myself into a few days earlier. Which is the
+whole arc of this thing in miniature: the wall looks structural and enormous, you spend
+days respecting it, and then a couple of plain numbers shrink it to a typo's worth of
+code. Fix the first-job latch and conv0 produces a real feature map; everything after it
+already works. That's the next flash — and it's the closest the board has ever been to
+telling me it sees a cat.
