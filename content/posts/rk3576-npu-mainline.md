@@ -2,7 +2,7 @@
 title: "Bringing Up the RK3576 NPU on Mainline Linux"
 date: 2026-06-15
 tags: ["linux", "rockchip", "npu", "embedded", "rk3576"]
-description: "Two weeks of chasing all-zero NPU output on the RK3576 — the wrong theories, and the offset remap that finally made it compute."
+description: "Chasing all-zero NPU output on the RK3576 — the wrong theories, the offsets I got right, and the on-chip buffer that still won't hand the math real numbers."
 showToc: true
 draft: false
 ---
@@ -510,3 +510,46 @@ days respecting it, and then a couple of plain numbers shrink it to a typo's wor
 code. Fix the first-job latch and conv0 produces a real feature map; everything after it
 already works. That's the next flash — and it's the closest the board has ever been to
 telling me it sees a cat.
+
+## The cat was a mirage
+
+That ending didn't survive better instrumentation. The "two of thirty-two channels" was
+the performance counter lying to me one last time — the counters are in 16-byte units, so
+what I read as 2/32 was the *full* output, written, every value of it sitting on the
+zero-point. Same picture, much worse meaning.
+
+So I stopped trusting a single sweep number and made the requant adjustable from the
+board — env knobs on the first conv's output-convert offset, scale and shift. Then I swept
+the shift from 0 to 25, a factor of 2¹⁷ in gain, with the scale pushed from 0x5391 up to
+0x8000. The output came back **byte-identical** across the middle of that range, and at the
+extreme corner it only flipped its two values — 7f for 80 — without ever saturating. There
+is no accumulator on earth that survives a 130,000× gain change unchanged. The convolution
+sum is zero. The requant was never crushing a real feature map; there was no feature map.
+
+I toggled the full NPU soft-reset on and off through a live module param to rule it out as
+the thing wedging the CBUF — no difference. Then the test I should have run a week earlier:
+a single standalone `conv2d`, sixteen input channels, nothing ARGB or first-layer about it.
+It runs on the NPU, every unit lights up, the output engine writes all of it — and it's the
+same two-distinct zero-point. It was never the first conv. **Every convolution this driver
+runs on this chip multiplies and gets zero.**
+
+## What "identical" buys you, which is nothing
+
+Here's the uncomfortable part. Line for line, rocket now matches the vendor on everything I
+can see: the register command stream, the state-init sequence, the soft-reset and its iommu
+re-attach, the submit handshake down to the arming writes. The CNA pulls the entire feature
+map and all the weights out of DRAM — the bandwidth counters prove it. The core engages. The
+output engine writes the whole tensor. And the multiply-accumulate, sitting between a full
+input and a full output, produces zero.
+
+Which means the gap is in the one place I have no window into: the on-chip convolution buffer
+the CNA stages operands into and the MAC reads back. The vendor fills it and computes; I issue
+the identical commands and the MAC reads zero. Nothing I can poll from a register tells the two
+cases apart.
+
+That's not a defeat, exactly — it's a localization. Six weeks ago this looked like twenty-eight
+layers each needing their own fix. It's one thing now: a single systemic staging step, the same
+for every conv, invisible to the command stream. All the per-layer layout work — the tight NHWC
+image, the 1536-byte first-conv weights, the pointwise packing — is correct and waiting; none of
+it can show its face until the CBUF actually hands the MAC real numbers. The board still hasn't
+seen a cat. But I finally know exactly which silence to listen to.
