@@ -7,8 +7,8 @@ theme = "PaperMod"
   pagerSize = 10
 
 [params]
-  author = "Jiaxing Hu (Ga Hing Woo)"
-  description = "Embedded Linux, firmware, and the gaps between hardware and mainline."
+  author = "Ga Hing Woo (Jiaxing Hu)"
+  description = "Upstream firmware and embedded Linux — Rockchip bring-up, secure boot, and NPU work from the gaps between hardware and mainline."
   defaultTheme = "auto"
   ShowReadingTime = true
   ShowShareButtons = false
@@ -20,7 +20,7 @@ theme = "PaperMod"
 
 [params.homeInfoParams]
   Title = "Ga Hing Woo (Jiaxing Hu)"
-  Content = "Low-level firmware · Embedded Linux · ARM bring-up · Rockchip RK3576 — TF-A · OP-TEE · U-Boot · EDK2/UEFI · NPU"
+  Content = "I work on low-level firmware and embedded Linux — ARM bring-up on Rockchip silicon, with patches merged upstream in TF-A and OP-TEE. Currently deep in RK3576: U-Boot, EDK2/UEFI, and mainline NPU bring-up."
 
 [[params.socialIcons]]
   name = "github"
