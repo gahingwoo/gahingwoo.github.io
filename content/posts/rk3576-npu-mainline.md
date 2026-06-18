@@ -176,7 +176,7 @@ core[dt_wr=25088]
 ```
 
 `dt_wr = 25088 = 112·112·2` — the full, correctly-sized first-layer output, written to
-DRAM. Weights actually fetched. All four units engaged. After two weeks of zeros, a
+DRAM. Weights actually fetched. All four units engaged. After a week and a half of zeros, a
 convolution ran on the silicon. The whole approach — offset remap, in-stream arming,
 patched DMA addresses — proven on hardware.
 
@@ -298,7 +298,7 @@ were correct all along — the saturation I'd blamed on requant was *always* FC_
 reverted my own clever change. The detective work doesn't just find bugs; it finds the
 ones you introduced chasing the wrong theory.)
 
-*Update, weeks on: this one didn't survive either. The vendor's real value turned out to
+*Update, days on: this one didn't survive either. The vendor's real value turned out to
 be `0x777` — I'd had the direction backwards — and conv0 never reliably held that
 154-distinct map. The bloom was a flicker, not a fix, and the real wall was somewhere I
 hadn't thought to look yet. It comes back at the end.*
@@ -547,7 +547,7 @@ the CNA stages operands into and the MAC reads back. The vendor fills it and com
 the identical commands and the MAC reads zero. Nothing I can poll from a register tells the two
 cases apart.
 
-That's not a defeat, exactly — it's a localization. Six weeks ago this looked like twenty-eight
+That's not a defeat, exactly — it's a localization. Two weeks ago this looked like twenty-eight
 layers each needing their own fix. It's one thing now: a single systemic staging step, the same
 for every conv, invisible to the command stream. All the per-layer layout work — the tight NHWC
 image, the 1536-byte first-conv weights, the pointwise packing — is correct and waiting; none of
@@ -583,3 +583,23 @@ standing: why the vendor's engines wake from the arming and mine need to be shou
 findable thing. And a second board, a stage behind on a sister chip, is standing at the exact same
 gate, bit-16 stuck at zero on every unit — which is the surest sign yet that it's one real bug and
 not ten imagined ones.
+
+## The shout that wakes the engines
+
+The engines never woke from the arming on their own. I'd been bolting a single "enable everything"
+instruction onto the end of each layer, and it worked — but it was a broadcast: it shouted at the
+command processor too, and the command processor's own enable bit means "start over." So one layer
+would run, and a whole-graph pipeline would never get past it.
+
+The fix was embarrassingly local. Each engine has its own wake register — one per unit, four of
+them. Name them individually instead of broadcasting, and they wake without the command processor
+hearing a thing. For the first time, the run-bit went high on every unit of a whole-graph submit at
+once. After all the days of engines that sat configured and idle, that's the closest thing to a
+pulse the board has shown.
+
+It isn't done — the sequencer still stops after the first layer, and the ping-pong geometry still
+loses its little race more often than it wins. But two of the three knots are precise, findable
+things now instead of a fog, and the last one is the same race I've been staring at from the start.
+And a sister chip a stage behind, stuck at the very same gate with its run-bit pinned to zero, just
+got handed the same key. One real bug, two boards — that's the most hopeful the wall has ever
+looked, two weeks in.
