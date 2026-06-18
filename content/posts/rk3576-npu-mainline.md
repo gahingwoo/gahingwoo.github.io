@@ -2,7 +2,7 @@
 title: "Bringing Up the RK3576 NPU on Mainline Linux"
 date: 2026-06-15
 tags: ["linux", "rockchip", "npu", "embedded", "rk3576"]
-description: "Chasing all-zero NPU output on the RK3576 — the wrong theories, the offsets I got right, and the on-chip buffer that still won't hand the math real numbers."
+description: "Chasing all-zero NPU output on the RK3576 — the wrong theories, the layouts I got right, and the one question left: why the compute engines won't wake from the arming."
 showToc: true
 draft: false
 ---
@@ -553,3 +553,33 @@ for every conv, invisible to the command stream. All the per-layer layout work �
 image, the 1536-byte first-conv weights, the pointwise packing — is correct and waiting; none of
 it can show its face until the CBUF actually hands the MAC real numbers. The board still hasn't
 seen a cat. But I finally know exactly which silence to listen to.
+
+## It was computing all along, about one run in ten
+
+The "universal zero" was wrong too — I just hadn't run it enough times. Dump conv0's output across
+a handful of identical inferences and most are the flat 2-distinct rail, but every so often one
+comes back a real 93-distinct feature map. Same command stream, same weights, same requant. It
+isn't a wall. It's a race.
+
+The register read-back said where: the convolution engine's config registers are ping-pong-grouped
+— the command stream writes the geometry into the producer group, the executer reads the consumer
+group, and on the first job of every inference the two don't line up in time. The executer reads a
+stale, empty group and convolves nothing. Once in a while the timing falls right and you get the
+cat's-whisker of a real feature map. I spent a long evening trying to force that timing — pointer
+arming, double-kicking the job, power-cycling the domain — and none of it moved the odds.
+
+Then the audit found the actual shape of it. The vendor's command stream has no "go" instruction in
+it at all — it's pure configuration, and the engines start straight from the arming write. Mine
+can't: drop the one broadcast "enable everything" instruction I append to each layer and every
+engine sits there configured and idle, bit-16 never set. So I need that instruction. But it writes
+the command processor's own enable register — so the very thing that wakes the engines also kicks
+the command processor back to the start. For one layer that's survivable. For the first layer of a
+race it *is* the race. For the whole graph in one submit — the way the vendor actually runs it — it
+restarts the sequencer on every layer and nothing advances past task zero.
+
+So the wall has a precise shape now, and it's a hopeful one: not a broken layout, not a mis-sized
+buffer, not a phantom CBUF — a real feature map proved all of that correct. Just one question left
+standing: why the vendor's engines wake from the arming and mine need to be shouted at. That's a
+findable thing. And a second board, a stage behind on a sister chip, is standing at the exact same
+gate, bit-16 stuck at zero on every unit — which is the surest sign yet that it's one real bug and
+not ten imagined ones.
