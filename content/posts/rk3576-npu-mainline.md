@@ -733,3 +733,39 @@ surface I can observe — the register stream, the submit handshake, the power d
 still computes zero, because the one surface I can't observe is a half-nanosecond of clock phase, and the
 vendor bought their way out of it with a clock I haven't replicated. Every door I pick opens onto the same
 room. But the room is one clock domain wide now, and for the first time I can say its name.
+
+## The room was empty
+
+I ended that saying the failure was one clock domain wide and I finally knew its name. I went into the
+room and it was empty.
+
+The convolution buffer's bus clock and the compute clock aren't two clocks I locked together by accident —
+they're one wire. Both are bare gates hung off a single source with no divider between them; they are the
+same frequency and the same edge by construction, on my driver and the vendor's alike. There is no
+"decouple them" experiment, because there is nothing to decouple. The door I'd named didn't exist.
+
+The only real difference left was where that one clock comes from. I drive it from a fixed PLL in the clock
+controller; the vendor drives it through firmware, off a process-tracking oscillator that trims itself to
+whatever the silicon can actually meet that millisecond. So I wired mine the vendor's way — routed the
+compute clock through the firmware path, let the tracking oscillator source it, pinned a conservative rate
+for margin — and ran the whole sweep again. Nothing moved. Same flat rail, every combination. My engines
+were already starting on the plain PLL; the fancier clock changed neither the starting nor the quitting.
+Not the fuse either. Another door onto the same empty room.
+
+But turning over the firmware's clock code wasn't wasted, because it finally showed the shape of the thing
+— to the *other* board. The sister chip, a stage behind me, stuck where its engines won't even start, has
+been hunting a write it can't see: something that arms the core but never appears in any trace of the
+registers the driver touches. I found it underneath. On that chip, the firmware call that *enables* the NPU
+clock does nothing at all — returns zero, configures nothing. Every real thing — the source mux, and a
+write to a register that lives outside the NPU block entirely — happens only when you *set a rate*, not when
+you switch the clock on. That's the invisible poke: not a register the kernel writes, but one the firmware
+writes, on a path the mainline driver may simply never take. My dead end was the other board's live wire.
+
+For my own chip the map is just complete now, and a complete map of where the bug *isn't* is its own kind of
+answer — it's what you hand the next idea, or the next person. Not the command stream, not the submit
+handshake, not the power domains, not the ping-pong groups, not the clock: every door the software has, I've
+opened, and behind each is the same half-nanosecond between the loader finishing and the multiplier reading,
+the one window no instrument I own can watch. The sister chip's firmware lead — arming-on-set-rate, the work
+that only happens underneath the kernel — is the first thing in a while that points somewhere I haven't
+already been. So that's where I go next: down past the driver, into the firmware, on both boards, to see
+whether the thing that's invisible from the kernel is visible from below it.
