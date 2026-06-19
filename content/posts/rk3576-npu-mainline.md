@@ -603,3 +603,43 @@ things now instead of a fog, and the last one is the same race I've been staring
 And a sister chip a stage behind, stuck at the very same gate with its run-bit pinned to zero, just
 got handed the same key. One real bug, two boards — that's the most hopeful the wall has ever
 looked, two weeks in.
+
+## The witnesses that weren't
+
+When a thing fails silently you go looking for a witness — some bystander register that saw what
+happened and will testify. The chip has a whole row of them: a status word with one bit per engine —
+feature-loaded, weight-loaded, core-ran, output-written. For weeks I'd half-believed one of those
+bits was about to crack the case. So I taught the vendor's driver — the one that works, the one that
+gets the right answer every time — to hold that status word up to the light across an entire run, and
+to hand me the finished output beside it.
+
+The output came back perfect: a real little feature map, numbers fanning out around the zero-point
+exactly the way a working convolution should. And the witness I'd been counting on said nothing. Not
+one of the per-engine bits had moved — not because the engines hadn't run, the proof was sitting right
+next to it, but because those bits simply don't light on this design, ever, working or broken. The
+only thing the chip ever raises its hand to announce is *done*. Never *doing*. I'd been interrogating
+a witness who turns out to be blind. Worse: a week earlier I'd caught my own broken board setting one
+of those bits when the vendor didn't, and read it as the smoking gun — the engine that never got fed.
+Backwards. My board was setting one bit *too many*, a fleck of sampling noise, and I'd hung a whole
+theory on it.
+
+So I went looking for a cleverer suspect. What if the engine was reading the right command from the
+wrong place — pulling yesterday's bytes out of memory while today's correct ones sat upstream in the
+processor's cache, written but never pushed down? The perfect crime: every register would read
+correct, because every register reflects the cached copy; only the engine, reaching past the cache
+into raw memory, would meet the stale ghost. It fit the shape of a thing that hides from every probe.
+
+It also wasn't true — and the reason it wasn't is almost funny. This chip isn't kept in sync with the
+processor by hardware, which sounds like the bad version but is the good one: it forces the driver to
+scrub every buffer all the way down to memory by hand before the engine looks, and the user-space
+stack flushes everything it writes on the way out. I walked the path end to end. The bytes in memory
+are the right bytes. And a missing flush would fail every single time, not one time in ten. No ghost.
+Just a clean buffer the engine reads correctly and then computes to zero anyway.
+
+Two suspects, two alibis. It's a strange kind of progress: the notebook fills with names crossed out
+and the thing you're hunting gets no closer, only smaller and harder to see. What's left is the
+handshake I keep circling — the instant the loader finishes staging and the multiplier starts reading,
+the half-second no instrument I own can watch. That's the room the crime happens in, and I still can't
+get a camera inside. So I'm going to stop staring through that keyhole and pick the lock on the other
+door: the sequencer that runs one layer and then stops dead, refusing to step to the next. That one,
+at least, leaves fingerprints.
