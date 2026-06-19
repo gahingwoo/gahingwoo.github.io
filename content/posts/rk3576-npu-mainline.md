@@ -496,8 +496,12 @@ Everything here came the slow way: instrument, guess, flash, read the counters, 
 hardware tell you you're wrong. Most of my guesses were. The performance counters never
 were — `dt_wr = 0` meant no compute no matter how clever I felt, `dt_wr = 25088` meant
 it finally ran, and now a cache-invalidated DRAM dump versus an offline reference is the
-witness for whether the *values* are right. With no public register docs, those honest
-signals are the whole game; everything I believed in between was provisional.
+witness for whether the *values* are right. There's a TRM now, and it covers the NPU's
+clocks, power domains and convolution-buffer layout — but not the NVDLA-derived compute
+registers the driver actually programs, the CNA and core and output-engine fields whose
+meanings I worked out by watching the vendor's live register stream move under a known
+input. For those the honest signals are the whole game; everything I believed in between
+was provisional.
 
 So the state of it: the compute path is alive. Cores engage, weights load, every layer
 reads its own real feature data, a whole inference runs without a single IOMMU fault or
@@ -683,3 +687,49 @@ this one doesn't even have a keyhole to squint through, only the burn marks of w
 But "it computes correctly and quits early" is a different animal than "it computes nothing," and you
 chase a different animal a different way. The cat was a mirage; the zero was a shape; the wall keeps
 turning out to be a door. I'll find the fuse.
+
+## Identical, and still wrong
+
+The fuse turned out to be the hardest kind of clue: the absence of one. I stopped eyeballing my
+command stream against the vendor's and wrote a diff that does it register by register, automatically,
+on the board, every boot — mine against a captured vendor first-conv, printed to the serial line. It
+came back clean. A hundred and thirty-eight registers, byte for byte, the only difference a single
+broadcast instruction I append where the vendor folds the same value into its submit header. Then I
+did it to the kernel's side — the exact sequence of writes that actually starts the job — and that
+matched too, down to the order: the data address, the amount, the interrupt mask, the task-control
+word, the enable pulse. The typo I'd half-hoped was hiding in my encoder simply isn't there. I program
+this chip exactly the way the working driver does.
+
+So I went at the race directly. The convolution engine's geometry lives in ping-pong register banks —
+a producer group the command stream writes and a consumer group the engine reads — and my standing
+theory, the one I'd given two confident chapters, was that on the first job those two don't line up.
+The kernel had grown a whole drawer of levers for it: force the geometry into *both* groups at once,
+replay the entire stream from the CPU instead of letting the sequencer fetch it, reset the ping-pong
+pointers every job, reset the convolution buffer every job, pin the pointer to a fixed value. I let the
+board sweep all of them, in combination, fourteen ways, and read the first conv's output after each.
+Fourteen flat zero-point rails. The ping-pong theory doesn't survive contact with the actual knobs.
+Whatever loses the race, it isn't a pointer I can set.
+
+Then the one structural difference I'd been saving. The vendor's device tree powers *two* NPU domains
+from its single node — core 0 and core 1 — even though a small inference only computes on one; the
+convolution-buffer read path apparently wants the second domain awake. Mine powered only the core I
+use. So I taught the driver to hold both, the proper way, multi-domain attach and all, and watched the
+same fourteen-way sweep come back the same fourteen zeros. Not that either.
+
+What's left is the one surface I can't reach from the command side. The vendor clocks the compute engine
+through a separate, firmware-managed clock domain, floating free of the bus clock that drives the
+convolution buffer. Mine runs both off one PLL, nailed rigidly in step. And the failure has been a
+*race* the entire time — most runs zero, one run in some unlucky number a clean ninety-three-distinct
+feature map, the command stream identical between them. A race is exactly what you get when two clocks
+that are supposed to drift against each other are instead locked together: the loader finishes staging,
+the multiplier starts reading, and whether the buffer's last write has landed comes down to a phase
+relationship I've frozen solid. I can't thaw it with a clock-rate call — I tried; they share a PLL and
+move as one. Thawing it means reparenting the compute clock onto a different PLL in the device tree if
+the silicon permits, or routing it through the firmware clock controller the way the vendor does — which
+is firmware, and firmware I've touched before on this chip but would rather not drag into a Mesa bug.
+
+That's the honest whole of it. I've made my driver indistinguishable from the one that works on every
+surface I can observe — the register stream, the submit handshake, the power domains, the reset — and it
+still computes zero, because the one surface I can't observe is a half-nanosecond of clock phase, and the
+vendor bought their way out of it with a clock I haven't replicated. Every door I pick opens onto the same
+room. But the room is one clock domain wide now, and for the first time I can say its name.
