@@ -769,3 +769,36 @@ the one window no instrument I own can watch. The sister chip's firmware lead �
 that only happens underneath the kernel — is the first thing in a while that points somewhere I haven't
 already been. So that's where I go next: down past the driver, into the firmware, on both boards, to see
 whether the thing that's invisible from the kernel is visible from below it.
+
+## The hinge between
+
+So I went down into the firmware. The clock code is all there — the silicon-tracking oscillator, a table of
+rates, a handler that programs the ring and muxes the compute clock onto it. Everything the vendor uses to
+give the NPU a clock matched to what the silicon can actually meet. The firmware can do it. I just have to
+ask for it.
+
+Asking goes through one channel: a small message protocol between the kernel and the firmware, the same one
+that already carries the CPU clocks. So I wired the NPU's compute clock onto it, told the kernel to set
+300 MHz, and read back what happened. The call returned *success*. The rate read back *zero*. The clock the
+engines actually run on never left the plain PLL it booted on. I'd run two whole sweeps "at PVTPLL" and both
+times I was measuring 786 MHz and writing 300 in the log.
+
+That contradiction is the whole of it. The kernel asks the firmware what rates a clock may take; the firmware
+answers in a shape the kernel can't parse — there's a named workaround in the kernel for this exact firmware
+quirk, and here it isn't enough — so the kernel rounds every request down to nothing, sets nothing, and
+cheerfully reports it worked. The one channel that's supposed to carry the request drops it on the floor and
+smiles.
+
+So the firmware path isn't blocked in the firmware, which has everything, or in my driver, which asks
+correctly. It's jammed in the hinge between them: a single rate descriptor the firmware writes one way and
+the kernel reads another. It isn't even an NPU bug — it's generic clock plumbing, the kind every peripheral
+on this chip leans on, and the sister chip rides the very same channel.
+
+Which is a strange place to be after a week of staring at a convolution that won't convolve: the compute wall
+is behind a clock I can't move, and the clock I can't move is behind half a sentence of mismatched
+description I can finally point at. That's smaller than where I started — a typo's worth of protocol instead
+of a phantom in the silicon — but it's a repair in a layer I didn't set out to touch, and it has to land
+before I even get to ask the original question: does the silicon-tracking clock make the multiply stop racing,
+or is that one more empty room? I still don't know. But for the first time the next move isn't a flash. It's
+reading a clock-rate handshake byte by byte, both sides of the seam, until I find which one is lying about the
+shape of a number.
