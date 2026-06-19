@@ -643,3 +643,43 @@ the half-second no instrument I own can watch. That's the room the crime happens
 get a camera inside. So I'm going to stop staring through that keyhole and pick the lock on the other
 door: the sequencer that runs one layer and then stops dead, refusing to step to the next. That one,
 at least, leaves fingerprints.
+
+## Waking was never the wall
+
+For two months the engines wouldn't start unless I shouted at them. I'd been ending every layer's
+instructions with a wake-up call, and it worked, but it was a blunt instrument — it woke the conductor
+too, and the conductor's own wake-bit means *start over*. So one night I tried the opposite of
+everything I'd been doing: I deleted the shout entirely. Left the instruction stream as pure
+configuration, the way the working board's stream is, and let the single pulse the driver already sends
+do the waking.
+
+And they woke. Every engine, run-bit high, exactly the way they go high on the board that works — no
+shout, no poking each one by hand, just the one pulse and the arming that had been sitting there in the
+stream the whole time. The thing my own notes had spent weeks calling the converged root of the entire
+failure — *the engines won't start from the arming the way the vendor's do* — was a door that had never
+been locked. I'd been standing in front of it for weeks, jiggling the wrong key, writing increasingly
+confident paragraphs about the lock.
+
+It should have been the morning everything broke open. It wasn't, quite. The engines wake now — and
+then they don't finish. The conductor counts to one and stops. The work starts and trails off. Waking
+was never the wall; *finishing* is. And that's a smaller, meaner thing to be stuck behind, because
+there's no dramatic dead bit to photograph — just engines that start, run for a moment, and quietly
+give up partway through.
+
+And partway, it turns out, is the whole story. All this time I'd been reading the first scrap of the
+output, seeing zeros, and writing *zero* in the log. So I read all of it — the entire buffer, end to
+end, at a fine grain — and the zero turned into a shape. The output isn't blank. It's *half-written*.
+The front of it is empty and the back of it is real, and the seam between them doesn't fall in a random
+place: it lands on channel lines. The thirty-two output channels come in four bands of eight, and the
+engine fills them from the top down — the high band first, then the next, then the next — and somewhere
+in that descent it stops. Some runs it lays down one band. Some runs three. Maybe one run in fifty it
+lays down all four, and for that one run the answer is *correct* — completely, briefly correct — before
+the next run truncates it again.
+
+So it was never computing zero. It was computing the right answer and running out of something partway
+down the channels, every time, at a slightly different place. Two months of calling it a dead multiply,
+and it was a live one with a short fuse. I don't know yet what the fuse is — that's the next door, and
+this one doesn't even have a keyhole to squint through, only the burn marks of where it keeps stopping.
+But "it computes correctly and quits early" is a different animal than "it computes nothing," and you
+chase a different animal a different way. The cat was a mirage; the zero was a shape; the wall keeps
+turning out to be a door. I'll find the fuse.
