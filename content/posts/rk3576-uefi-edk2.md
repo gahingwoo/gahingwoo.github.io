@@ -177,6 +177,24 @@ The recurring tell across all of it: the Rockchip SDHCI's clock divider bits are
 functional — the real eMMC clock follows the CRU, and the SDHCI divisor is ignored. Once
 you internalise that, half the "impossible" clock numbers explain themselves.
 
+## Ethernet: the part number was a copy-paste
+
+This one barely cost any debugging — it's here because of *how* the answer hid. GMAC0 on
+the CM5-IO comes up fine; PXE boots, gigabit links. But every text source describing the
+PHY agrees it's a Realtek RTL8211F: the upstream device tree comment says so, the vendor
+BSP device tree says so (it even hard-codes a "100 ms for rtl8211f" reset delay), and the
+EDK2 port I started from ships a `RealtekPhy.c`. Four independent files, one part number,
+total consensus.
+
+The schematic disagrees. `U6601` is a **MotorComm YT8531C** — a different vendor's PHY
+entirely. Every text source had inherited the same wrong identity by copy-paste, one tree
+cribbing from the last, and nobody re-checked against the board. It works anyway because
+both are ordinary Clause-22 PHYs and the generic IEEE driver brings either up — so the lie
+is *invisible* as long as you only need a link. It stops being invisible the moment you
+want the PHY-specific RGMII skew and delay tuning right, which is the difference between
+"links" and "links cleanly at gigabit." The schematic was the one witness in the room that
+hadn't copied its homework from the others.
+
 ## The bugs that weren't peripherals
 
 The two nastiest bugs weren't in any controller. They lived at the seam where firmware
@@ -207,12 +225,12 @@ all-zeros as *skip this slot*, not *a 256 MB stick lives here*.
 
 ## The pattern
 
-Three peripherals, three different lessons, one shape — and two bugs at the seam to round
-it out. HDMI: *your debugging can be the bug.* USB: *the controller's idea of a no-op
-isn't the spec's.* eMMC: *the thing was never powered on, you were talking to a brick.*
-The handoff: *data that looks like code, and zero that looks like a number.* None of it
-came from a register manual — it came from mainline Linux and U-Boot as the reference for
-*what the working values are*, then flashing real boards and reading what the silicon did.
-The screen, the `PORTSC` bits, the CMD0 timeout, and a fault address six gigabytes into
-nowhere were the only honest witnesses. Everything else was a theory waiting to be
-reverted.
+A handful of peripherals, each with its own lesson, one shape. HDMI: *your debugging can
+be the bug.* USB: *the controller's idea of a no-op isn't the spec's.* eMMC: *the thing
+was never powered on, you were talking to a brick.* Ethernet: *every document agreed, and
+the schematic was the only one right.* And the two at the seam: *data that looks like
+code, and zero that looks like a number.* None of it came from a register manual — it came
+from mainline Linux and U-Boot as the reference for *what the working values are*, then
+flashing real boards and reading what the silicon did. The screen, the `PORTSC` bits, the
+CMD0 timeout, a schematic nobody re-read, and a fault address six gigabytes into nowhere
+were the only honest witnesses. Everything else was a theory waiting to be reverted.
