@@ -27,7 +27,14 @@ Boards: Radxa ROCK 4D (SPI boot) and ArmSoM CM5-IO (SD boot).
 ## HDMI: where reading a register breaks the picture
 
 VOP2 is Rockchip's display controller, and the RK3576's is *almost* the RK3588's, which
-is the worst kind of almost. The differences that cost real time:
+is the worst kind of almost. Same register *names*, subtly different *addresses* and
+*semantics*, and a vendor TRM that documents the happy path and nothing else. What follows
+is the whole journey, dead ends included, because the dead ends are the actual content.
+
+### Tier 1: the things you just have to get right
+
+These cost time but they're honest hardware facts — read the TRM carefully, cross-check
+mainline, move on:
 
 - **Pixel clock divider is ÷2, not ÷4.** RK3588 uses ÷4; RK3576 halves the VOP2 DCLK
   core rate (`VPixclk >> 1`). Wrong divider, no usable signal.
@@ -37,50 +44,85 @@ is the worst kind of almost. The differences that cost real time:
 - **`IOC_MISC_CON0` CLR bit must stay latched** — it's not write-1-to-clear like you'd
   assume. Clear it and you freeze the hot-plug detector solid.
 
-And then the two that genuinely felt like the hardware was messing with me:
+A note on references: do **not** use vendor U-Boot as your VOP2 source. Mainline U-Boot
+doesn't bring up VOP2 at all (the OS DRM driver does), so it's tempting to reach for the
+Rockchip vendor tree, which *does* init the display. It also has its own divergent register
+map — `rk3528_setup_overlay`, a different `BG_MIX_CTRL` address — and it burned me twice
+(a stray `LAYER_SEL = 0xFFFFFFFF` pre-init, a wrong mix-control address), each time killing
+the signal. The only authoritative reference is mainline Linux `rockchip_drm_vop2.c` /
+`rockchip_vop2_reg.c`.
 
-- **`PRE_DITHER_DOWN_EN = 1` kills the signal** in our incremental-write VOP2 init —
-  even though mainline sets that exact bit. The difference is mainline computes the whole
-  register and writes it once; we were touching registers live, and enabling pre-dither
-  mid-sequence drops the output. Leave it 0 unless you refactor to compute-then-write.
-- **Reading VOP2 registers after enable kills the picture.** I added register dumps to
-  debug a blending issue and the dumps *themselves* took down HDMI. On this block, reads
-  are not side-effect-free. That one cost an afternoon of chasing a "bug" that was my own
-  diagnostic.
+### Tier 2: mainline does X, and you can't
 
-If you skim my edk2-rk3576 git log around the HDMI work it is a graveyard of
-`fix:` immediately followed by `Revert "fix:"`. That's not noise — that's what bring-up
-on an undocumented display path actually looks like. Try, flash, look at the screen,
-revert, try the next thing.
+- **`PRE_DITHER_DOWN_EN = 1` kills the signal** — even though mainline sets that exact bit
+  for the same RGB888 path. The difference is *ordering*: mainline computes the entire
+  `DSP_CTRL` as one local `u32` and writes it once at the end of `atomic_enable`; my
+  `Vop2Init` pokes the register incrementally with read-modify-write and intermediate
+  `CFG_DONE` commits. Flip pre-dither mid-sequence and the VP lands in a state `CFG_DONE`
+  can't complete from, and the output drops. The cost of leaving it `0` is visible —
+  faint vertical one-pixel banding and a touch less brightness — but Linux rewrites
+  `DSP_CTRL` at OS handoff, so it's a UEFI-only cosmetic. Real fix is a compute-then-write
+  refactor; I haven't done it yet.
 
-### The picture was there the whole time
+### Tier 3: the bug that was my own debugger
 
-Here's the part I'm slightly embarrassed by, kept in because it's the actual lesson.
+This is the one I'll be telling people about for a while.
 
-Once I stopped reading registers, the monitor synced and — for a moment when I glanced
-at it mid-boot — showed black. Valid timing, valid TMDS, nothing on it. I concluded the
-overlay (the block that composites windows onto a video port) must be wrong: RK3576's is
-laid out differently from RK3588's — per-window `VP_SEL` registers and a per-VP
-`OVL_LAYER_SEL` instead of the RK3588 central pair at 0x604/0x608 — so surely EDK2 was
-programming an overlay the chip ignores. I spent an evening "fixing" it against mainline
-`rockchip_vop2_reg.c`, flashed, and turned a working picture into a *dead signal*.
+I had a black screen with a *valid* signal and went hunting for the blending bug. Standard
+move: dump the overlay registers after enable and read them back. So I added a block of
+`MmioRead32` + `DEBUG` prints after VP0's `CFG_DONE` — `OVL_LAYER_SEL`, the legacy
+`OVL_PORT_SEL` at 0x608, the old `VP0_BG_MIX` at 0x6E0, the esmart block. **Adding the
+dump took down HDMI.** Read-only reads. No writes.
 
-Then I pulled the EDK2 firmware volume out of the one image that actually drove a picture
-and diffed it against my "fix." The working binary was the **original, unmodified**
-overlay. The RK3588-style central `OVL_LAYER_SEL`/`OVL_PORT_SEL` path composites perfectly
-well on RK3576; my rework left the window half-routed and dropped sync. The black frame I'd
-panicked over was just the boot logo not yet painted at the instant I looked — once BDS
-draws the framebuffer, TianoCore is on the glass:
+The trap is that on RK3576 the OVL block was *reorganized*: 0x608 and 0x6E0 are
+RK3588-legacy addresses that now point at completely different, live registers, and
+touching them — even reading — perturbs the VP. (Or it's the ~10 ms of UART latency at
+1.5 Mbaud landing in a tight window between `CFG_DONE` and the PHY bring-up; I never fully
+proved which.) Either way: **my diagnostic was the fault.** And because the dump moved the
+register *values* I was reading, it manufactured a fake `LAYER_SEL` bug — so I spent an
+afternoon chasing a layer-select problem that did not exist, caused entirely by the act of
+looking at it.
+
+### Tier 4: debugging a problem that wasn't there
+
+Here's the genuinely embarrassing part, kept in on purpose.
+
+Once I stopped reading registers, the monitor synced and — in the half-second I glanced at
+it mid-boot — showed black. Valid timing, valid TMDS, nothing on it. So I built a theory:
+RK3576's overlay routes windows differently from RK3588 — per-window `VP_SEL` registers
+plus a per-VP `OVL_LAYER_SEL`, instead of the central pair at 0x604/0x608 — so surely EDK2
+was programming an overlay the chip ignored, and the window was attached to no video port.
+It's a *plausible* theory; it matches how the mainline RK3576 path is actually written. I
+spent an evening implementing it carefully against `rockchip_vop2_reg.c`, flashed, and
+turned a working picture into a *dead signal* — three builds in a row.
+
+What finally stopped the bleeding was not more theory. It was `dumpimage` on the one SD
+image that actually drove a picture: pull the gzipped EDK2 firmware volume out of the FIT
+and check its build timestamp against mine. The working binary was the **original,
+unmodified** overlay — the build where my rework was *reverted*. The RK3588-style central
+`OVL_LAYER_SEL`/`OVL_PORT_SEL` path composites perfectly well on RK3576. My rework left the
+window half-routed and dropped sync. And the black frame that started the whole detour?
+The boot logo simply hadn't been painted yet at the instant I looked — once BDS draws the
+framebuffer, TianoCore is on the glass:
 
 | Radxa ROCK 4D | ArmSoM CM5-IO |
 |---|---|
 | ![EDK2 UEFI on ROCK 4D via HDMI](/imgs/monitor-4d.png) | ![EDK2 UEFI on CM5-IO via HDMI](/imgs/monitor-cm5io.jpeg) |
 
-The only real HDMI bug was the register dump killing the signal. Everything after that was
-me debugging a problem that didn't exist — exactly the failure mode this whole section warns
-about. The CM5-IO does have a small horizontal offset (the RK3576 background/pre-scan delay
-still uses the RK3588 formula — a genuine one-register fix for another evening), but a
-shifted picture beats a week of black screens, and it was one revert away the whole time.
+So if you skim the edk2-rk3576 git log around the HDMI work it's a graveyard of `fix:`
+immediately followed by `Revert "fix:"`, and now a `revert:` of a `fix:` that fixed
+nothing. That isn't noise — it's what undocumented display bring-up looks like when your
+own tools and your own theories keep generating phantom bugs. Two lessons I actually
+internalised:
+
+1. **On this block, reading is not free.** Print computed values *before* you write them;
+   never read registers back after enable for "just a quick check."
+2. **Confirm against the working binary before you theorise.** Five minutes of `dumpimage`
+   would have saved me an evening of plausible, confident, wrong rework.
+
+The one real bug was the register dump. The only thing left is a small horizontal offset on
+CM5-IO — the RK3576 background/pre-scan delay still uses the RK3588 formula, a genuine
+one-register fix — and even that was one `git revert` away the whole time.
 
 ## USB: a hub that won't enumerate
 
