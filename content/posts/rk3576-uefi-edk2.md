@@ -53,36 +53,34 @@ If you skim my edk2-rk3576 git log around the HDMI work it is a graveyard of
 on an undocumented display path actually looks like. Try, flash, look at the screen,
 revert, try the next thing.
 
-### The last boss: a signal with nothing on it
+### The picture was there the whole time
 
-Once I stopped reading registers, the monitor finally synced — and showed a perfectly
-stable, perfectly *black* picture. Valid timing, valid TMDS, no content. The framebuffer
-was allocated, the window pointed at it, and the screen was empty.
+Here's the part I'm slightly embarrassed by, kept in because it's the actual lesson.
 
-This is where the RK3576-is-almost-RK3588 trap closes for real. The overlay — the block
-that composites windows onto a video port — is laid out *differently*:
+Once I stopped reading registers, the monitor synced and — for a moment when I glanced
+at it mid-boot — showed black. Valid timing, valid TMDS, nothing on it. I concluded the
+overlay (the block that composites windows onto a video port) must be wrong: RK3576's is
+laid out differently from RK3588's — per-window `VP_SEL` registers and a per-VP
+`OVL_LAYER_SEL` instead of the RK3588 central pair at 0x604/0x608 — so surely EDK2 was
+programming an overlay the chip ignores. I spent an evening "fixing" it against mainline
+`rockchip_vop2_reg.c`, flashed, and turned a working picture into a *dead signal*.
 
-- On RK3588 there's one central `OVL_LAYER_SEL` (0x604) and one `OVL_PORT_SEL` (0x608)
-  that route every window.
-- On RK3576 each window selects its target port through its **own** per-window `VP_SEL`
-  register (esmart base + 0xF4, cluster base + 0x1F4), and the layer-select is **per-VP**
-  (`0x604 + vp*0x100`). The old 0x608 write doesn't route anything on RK3576 — it lands
-  *inside* video-port 0's overlay block and quietly corrupts it.
-
-So the EDK2 driver was faithfully programming the RK3588 overlay into an RK3576 that
-ignores it. The window was enabled but attached to no port; the mixer showed background.
-The fix, cross-checked against mainline `rockchip_vop2_reg.c`: write each window's own
-`VP_SEL = target VP` on enable, program the per-VP layer-select with only the routed
-window, and stop touching 0x608. Flash, and TianoCore is finally *on the glass* — on both
-the ROCK 4D and the ArmSoM CM5-IO:
+Then I pulled the EDK2 firmware volume out of the one image that actually drove a picture
+and diffed it against my "fix." The working binary was the **original, unmodified**
+overlay. The RK3588-style central `OVL_LAYER_SEL`/`OVL_PORT_SEL` path composites perfectly
+well on RK3576; my rework left the window half-routed and dropped sync. The black frame I'd
+panicked over was just the boot logo not yet painted at the instant I looked — once BDS
+draws the framebuffer, TianoCore is on the glass:
 
 | Radxa ROCK 4D | ArmSoM CM5-IO |
 |---|---|
 | ![EDK2 UEFI on ROCK 4D via HDMI](/imgs/monitor-4d.png) | ![EDK2 UEFI on CM5-IO via HDMI](/imgs/monitor-cm5io.jpeg) |
 
-The CM5-IO still has a small horizontal offset — the RK3576 background/pre-scan delay is
-computed with the RK3588 formula, a separate one-register fix for another evening. But
-after a week of black screens, a shifted picture is a *very* good problem to have.
+The only real HDMI bug was the register dump killing the signal. Everything after that was
+me debugging a problem that didn't exist — exactly the failure mode this whole section warns
+about. The CM5-IO does have a small horizontal offset (the RK3576 background/pre-scan delay
+still uses the RK3588 formula — a genuine one-register fix for another evening), but a
+shifted picture beats a week of black screens, and it was one revert away the whole time.
 
 ## USB: a hub that won't enumerate
 
