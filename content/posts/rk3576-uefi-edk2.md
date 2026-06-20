@@ -1,6 +1,6 @@
 ---
 title: "RK3576 UEFI: Teaching EDK2 to Drive HDMI, USB, and eMMC"
-date: 2026-05-31
+date: 2026-06-20
 tags: ["edk2", "uefi", "rockchip", "rk3576", "firmware", "hdmi", "usb", "emmc"]
 description: "Replacing U-Boot proper with EDK2 on the RK3576 — and the three peripherals that each had their own way of refusing to work."
 showToc: true
@@ -52,6 +52,37 @@ If you skim my edk2-rk3576 git log around the HDMI work it is a graveyard of
 `fix:` immediately followed by `Revert "fix:"`. That's not noise — that's what bring-up
 on an undocumented display path actually looks like. Try, flash, look at the screen,
 revert, try the next thing.
+
+### The last boss: a signal with nothing on it
+
+Once I stopped reading registers, the monitor finally synced — and showed a perfectly
+stable, perfectly *black* picture. Valid timing, valid TMDS, no content. The framebuffer
+was allocated, the window pointed at it, and the screen was empty.
+
+This is where the RK3576-is-almost-RK3588 trap closes for real. The overlay — the block
+that composites windows onto a video port — is laid out *differently*:
+
+- On RK3588 there's one central `OVL_LAYER_SEL` (0x604) and one `OVL_PORT_SEL` (0x608)
+  that route every window.
+- On RK3576 each window selects its target port through its **own** per-window `VP_SEL`
+  register (esmart base + 0xF4, cluster base + 0x1F4), and the layer-select is **per-VP**
+  (`0x604 + vp*0x100`). The old 0x608 write doesn't route anything on RK3576 — it lands
+  *inside* video-port 0's overlay block and quietly corrupts it.
+
+So the EDK2 driver was faithfully programming the RK3588 overlay into an RK3576 that
+ignores it. The window was enabled but attached to no port; the mixer showed background.
+The fix, cross-checked against mainline `rockchip_vop2_reg.c`: write each window's own
+`VP_SEL = target VP` on enable, program the per-VP layer-select with only the routed
+window, and stop touching 0x608. Flash, and TianoCore is finally *on the glass* — on both
+the ROCK 4D and the ArmSoM CM5-IO:
+
+| Radxa ROCK 4D | ArmSoM CM5-IO |
+|---|---|
+| ![EDK2 UEFI on ROCK 4D via HDMI](/imgs/monitor-4d.png) | ![EDK2 UEFI on CM5-IO via HDMI](/imgs/monitor-cm5io.jpeg) |
+
+The CM5-IO still has a small horizontal offset — the RK3576 background/pre-scan delay is
+computed with the RK3588 formula, a separate one-register fix for another evening. But
+after a week of black screens, a shifted picture is a *very* good problem to have.
 
 ## USB: a hub that won't enumerate
 
