@@ -836,6 +836,19 @@ actually run, it loads every byte of input and weight and computes zero. That is
 up here. It lives in the half-millimetre between the buffer and the multiplier, and I've run out of
 instruments that reach it.
 
+There's a structural reason this road has a ceiling, and it's worth naming plainly — not as a complaint, just
+as the shape of the terrain. The public TRM is enormous, north of four thousand pages, and it documents the
+NPU's *surroundings* in real detail: the clock tree, the power domains, the reset and gating, the CBUF buffer
+registers. What it doesn't spell out are the compute registers themselves — the instruction-issue and datapath
+fields you'd write to actually run a layer. The plumbing is fully public; the engine room is sketched in
+outline. So an open driver can get everything *around* the computation exactly right — arm it, clock it, power
+it, fill the buffer — and still have no documented way, from the manual alone, to issue the final "go." That
+last reach lives in the vendor's runtime, and decoding its command stream (which is most of this post) is the
+only open path to it. This isn't unique to one chip or one vendor — it's roughly the state of every NN
+accelerator I know of, the inevitable consequence of the compute path being where the IP value sits. But it
+does explain, without any villain, why the honest end of *this* road is "someone with the schematic": not
+because the lock is mean, but because half the map was simply never printed.
+
 So I'm going to write the map down — every door I opened and what was behind it — and hand it to people who can
 see inside the silicon. Two weeks ago that would have felt like quitting. It doesn't now. A complete, honest
 account of where a bug *isn't* is the most useful thing one person can hand the next, and I've drawn it as
