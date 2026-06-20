@@ -802,3 +802,42 @@ before I even get to ask the original question: does the silicon-tracking clock 
 or is that one more empty room? I still don't know. But for the first time the next move isn't a flash. It's
 reading a clock-rate handshake byte by byte, both sides of the seam, until I find which one is lying about the
 shape of a number.
+
+## Where the firmware road ends
+
+I found the number that was lying. The kernel and the firmware each have a name for the NPU's clock, and I'd
+assumed the two names meant the same thing. They don't — the kernel calls it 232, the firmware calls it 238 —
+and every request I'd been sending went to slot 232, an empty drawer the firmware politely accepts and
+ignores. Point the request at 238 and the clock finally moves: after days of "success" that did nothing, the
+rate read back the number I asked for. The whole hinge was a single mismatched integer.
+
+And then the clock that finally moved turned out to be a clock the engine can't run on.
+
+On the silicon-tracking source, at the right frequency, at the exact voltage the vendor's table says that
+frequency needs, the NPU completes precisely zero jobs. Not slowly — at all. Eighty-three scheduler timeouts
+in ninety seconds, not one of them a finish. I raised the voltage first, the way the power framework insists:
+zero. I moved the clock switch to *after* the reset, so the engine came up on the safe clock and only crossed
+over at the very end: zero. Every variable I could turn, turned, and the answer stayed zero. The plain old PLL
+at least lets the engine run and compute its wrong answer; the fancy tracking clock kills it outright.
+
+Which makes a grim kind of sense once you stop wishing it were simple. The vendor's tracking clock isn't a
+clock you switch on — it's the visible tip of a whole subsystem: a per-chip calibration burned into fuses, a
+voltage-frequency table, a governor that walks the two in lockstep, a feedback loop that trims the oscillator
+to what *this* die can sustain *this* millisecond. Hand the engine the raw oscillator without the rest of that
+machine and you've handed it a clock that lies about its own speed. I'd been trying to plug in the last cable
+of a machine I hadn't built.
+
+So that's where the firmware road ends, this round. Not at a locked door — at a working lock on a door that
+opens onto a room I'd have to build from nothing, to maybe answer a question I was never sure was the right
+one. The whole clock theory was a guess that the convolution's failure was a matter of timing, and I never
+once got a clean enough run to even test the guess. The honest scoreboard: the command stream matches the
+vendor, the submit matches, the power domains match, the reset matches — and on the one clock the engine will
+actually run, it loads every byte of input and weight and computes zero. That isn't a bug I can still see from
+up here. It lives in the half-millimetre between the buffer and the multiplier, and I've run out of
+instruments that reach it.
+
+So I'm going to write the map down — every door I opened and what was behind it — and hand it to people who can
+see inside the silicon. Two weeks ago that would have felt like quitting. It doesn't now. A complete, honest
+account of where a bug *isn't* is the most useful thing one person can hand the next, and I've drawn it as
+carefully as I know how. The board still hasn't seen a cat. But I know, finally and exactly, which silence I'm
+listening to — and it isn't one more flash that breaks it. It's someone with the schematic.
