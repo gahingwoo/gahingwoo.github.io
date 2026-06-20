@@ -177,12 +177,42 @@ The recurring tell across all of it: the Rockchip SDHCI's clock divider bits are
 functional — the real eMMC clock follows the CRU, and the SDHCI divisor is ignored. Once
 you internalise that, half the "impossible" clock numbers explain themselves.
 
+## The bugs that weren't peripherals
+
+The two nastiest bugs weren't in any controller. They lived at the seam where firmware
+hands off to the OS, and they're the kind you can only hit on real silicon with real
+memory contents.
+
+**A coincidental "MZ" that crashed the handoff.** `ExitBootServicesHookDxe` identifies the
+OS loader by walking *backwards* from the loader entry looking for an EFI PE image — the
+`MZ` DOS signature (`0x5A4D`), then `e_lfanew` to find the PE header. On the ROCK 4D this
+was fine. On the CM5-IO it hard-hung before Linux could take over from GRUB. The cause:
+some unrelated *data* page happened to contain the two bytes `4D 5A`, the scanner accepted
+it as a DOS header, read `e_lfanew` out of whatever garbage followed, and chased the
+"PE header" pointer to `0x184DD0D7C` — about 6.2 GB, nowhere near anything mapped. A
+translation fault (`ESR=0x96000005`), and the board was dead one instruction before the
+kernel got control. It looked board-specific and random because it *was* random: it
+depended on what bytes were lying around in memory at that address on that board. The fix
+is to not trust a bare `MZ` — a real EFI image keeps its PE header at a small offset, so
+reject any `e_lfanew` outside `[sizeof(DOS_HEADER), 1 MB)` before following it. Data that
+happens to look like code is the oldest trap there is, and it still got me.
+
+**256 MB of RAM that didn't exist.** The SDRAM sizing code reads two bank register pairs
+out of `PMUGRF`. The CM5 module is a single 4 GB bank, so the SPL never writes the second
+pair — and it reads back as all-zeros. Zero isn't "no bank," though; fed through the
+bit-field math it decodes to a perfectly plausible *256 MB*, so the firmware proudly
+reported 4352 MB to SMBIOS. Harmless to the page tables, but a lovely reminder that an
+uninitialised register reading `0` is not the same as "absent" — you have to treat
+all-zeros as *skip this slot*, not *a 256 MB stick lives here*.
+
 ## The pattern
 
-Three peripherals, three different lessons, one shape. HDMI: *your debugging can be the
-bug.* USB: *the controller's idea of a no-op isn't the spec's.* eMMC: *the thing was
-never powered on, you were talking to a brick.* None of it came from a register manual —
-it came from mainline Linux and U-Boot as the reference for *what the working values
-are*, then flashing real boards and reading what the silicon did. The screen, the
-`PORTSC` bits, and the CMD0 timeout were the only honest witnesses. Everything else was
-a theory waiting to be reverted.
+Three peripherals, three different lessons, one shape — and two bugs at the seam to round
+it out. HDMI: *your debugging can be the bug.* USB: *the controller's idea of a no-op
+isn't the spec's.* eMMC: *the thing was never powered on, you were talking to a brick.*
+The handoff: *data that looks like code, and zero that looks like a number.* None of it
+came from a register manual — it came from mainline Linux and U-Boot as the reference for
+*what the working values are*, then flashing real boards and reading what the silicon did.
+The screen, the `PORTSC` bits, the CMD0 timeout, and a fault address six gigabytes into
+nowhere were the only honest witnesses. Everything else was a theory waiting to be
+reverted.
