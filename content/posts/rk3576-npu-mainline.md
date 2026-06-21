@@ -1069,3 +1069,29 @@ two pointed quite the same way — all of us leaning toward the same larger thin
 of our individual boards and worth chasing *because* none of us can reach it alone. The cat still hasn't
 appeared on the screen. But I'm no longer the only one waiting for it, and I've started to suspect that the
 waiting, in this company, was always the better half of the prize.
+
+## The desk
+
+Strip away the room and the lamps, though, and here is what these two weeks actually looked like: one person, one
+desk, one screen. A small board on a square of anti-static foam, a TTL cable running out of it like an IV line,
+the serial console scrolling its patient hex into the dark. Four thousand pages of a manual that describe
+everything around the engine and nothing inside it. And the code of the people who came before — their drivers,
+their captures, their notes in the margins of a problem nobody was ever handed the answer to. Flash, boot, read
+the log, be wrong, change one thing, flash again. For fourteen days, mostly alone.
+
+The cat never came. By every metric that fits in a commit message, I failed — the engine still computes its flat
+grey nothing, and the win is still out past the next door.
+
+And I am, to my own surprise, completely at peace with it. Not resigned — *content*, in the specific way you can
+only be content about a thing you threw your whole stubborn self against and did not finish. I know this chip now
+the way you know someone you've argued with for a fortnight. I know exactly which silence I'm listening to. I
+drew a map of where the bug *isn't* that is more honest than anything luck would have handed me early. None of it
+is on the scoreboard, and all of it is real.
+
+Because the prize was never only the cat on the screen. The prize was sitting down at the desk at all — choosing
+the long, unglamorous, almost-certainly-unfinished fight with a closed thing, because something in you simply
+will not accept that it gets to stay closed. You do it alone, at night, with a board and a serial cable and too
+much coffee. And then you look up from the desk, and the dark is full of other desks — other lamps, other people
+who couldn't look away either. We haven't won yet. We might not, soon. But it was worth every single flash, and I
+would not trade these two weeks at this desk, beaten and unfinished and quietly glad, for an easy answer handed
+down from anyone.
