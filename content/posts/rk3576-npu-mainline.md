@@ -923,3 +923,40 @@ every day: being the person holding the board, the one who can tell a clean patc
 where it meets the metal and falls down. The platform half of this is going upstream now — his name on the
 series, my three walls folded in as the fixes. The compute half still waits for someone who can see inside.
 But the door I can hold open, I'm holding it open with both hands.
+
+## The weights it wouldn't read
+
+For two weeks the bug had a vague name — "the compute comes back zero" — and a vague address, "somewhere
+below the registers." I decided I'd earned the right to make both exact, or to prove I couldn't. So I ran an
+audit against myself: take every hypothesis I still half-believed and try to kill it with a number instead of
+a feeling.
+
+It was a good massacre. The idea that Mesa used the wrong buffer geometry — dead; it sets the RK3576's sixteen
+banks correctly, not the RK3588's twelve. The idea that the bank-config register was subtly off — dead;
+byte-identical to the vendor's. The idea that the weights were packed wrong — dead; there's a hand-derived
+RK3576 layout, and the counters say the right 1536 bytes load. The race, already dead. The ping-pong pointer,
+dead. One by one, every door I'd been hopefully rattling turned out to be a wall, and I confirmed each one with
+a measurement, not a hunch. An audit's whole worth is that it spends evidence on your favourite theories first.
+
+And when the dust settled, the bug wasn't vague anymore. It was a single counter reading zero.
+
+Here is conv0, in numbers. It reads the entire input from memory — a hundred and fifty thousand bytes, the
+whole image — into the on-chip buffer. It reads the weights in too: the right count, in the right format, into
+the bank the manual says they go. I dumped that buffer from the CPU and watched the staged data sitting there,
+real and structured. The register that selects first-convolution mode is set. The register holding each colour
+channel's zero-point is set. Every one of them matches a capture of the vendor doing the same convolution, to
+the byte. The compute units wake up. And then the multiplier reads **zero** of the weights it was just handed —
+`core wt_rd = 0`, every run, forever — multiplies by nothing, and writes out the flat grey of an empty answer.
+
+That's the whole bug. Not a wrong value, not a missing write, not a race — a handoff. The buffer holds the
+weights; the instructions to read them are identical to the ones that work on the vendor's stack; the engine is
+awake; and the one internal signal that should tap it on the shoulder and say *the weights are ready, go* never
+fires. It's the same silence as the dead sub-unit interrupts — the weight-load-done that should kick the read,
+not asserting. One latch, and it's the one latch on the whole chip with no register I can name to poke.
+
+I won't pretend that's a happier place to be stuck. But it's an honest one, and it's precise. "The NPU computes
+wrong" is a shrug. "The weights are loaded, in format, in place, the config is byte-identical, the units engage,
+and the multiplier still reads `wt_rd = 0`" is a *question* — and it's one I could hand to exactly the person
+who wrote the open driver for this engine's bigger sibling and have him recognise it in a sentence. Two weeks
+ago I was looking for someone with the schematic. I've stopped needing the whole schematic. I just need the
+name of one wire.
