@@ -996,3 +996,17 @@ It's a smaller wire than it was a week ago. Not "the NPU is wrong," not even "th
 weights are correct, and they're read, and they're simply never deposited where they're needed, on this one
 chip, for reasons that aren't in any register I can see. I still don't have the name of the wire. But everyone
 who might know it is standing at the same door now, and the door is a great deal smaller.
+
+## Thanks
+
+This stopped being a solo project somewhere in the middle, and that's the best thing that happened to it.
+**[Tomeu Vizoso](https://gitlab.freedesktop.org/tomeu)** — who wrote the open `rocket` driver and the Teflon
+delegate this whole stack stands on — has been generous with his time on the bring-up thread: he's the one who
+reframed the zero-point output as "the pipeline runs, it's a data problem," handed me the single-op isolation
+method that cut the search by an order of magnitude, and then pointed me at
+[allbilly/rk3588](https://github.com/allbilly/rk3588), a pure-Python register-level NPU reference that turns out
+to be exactly the map for the corner I'm stuck in. Thank you. Thanks too to **VoidChecksum**, who wrote the
+mainline RK3576 enablement series and folded my hardware fixes into it; to **MidG971**, bringing up the RK3568
+sibling at the same wall, one stage back; and to **alchark** and the folks on the Flipper thread for the
+introductions and the honesty about what's NDA'd and what isn't. The compute half isn't solved yet — but it's a
+much better-lit room with all of you in it.
