@@ -960,3 +960,39 @@ and the multiplier still reads `wt_rd = 0`" is a *question* — and it's one I c
 who wrote the open driver for this engine's bigger sibling and have him recognise it in a sentence. Two weeks
 ago I was looking for someone with the schematic. I've stopped needing the whole schematic. I just need the
 name of one wire.
+
+## Three suspects, and a smaller wire
+
+The person with the open driver wrote back. He'd built the same engine's bigger sibling out of the same black
+box I'm working in, and the first thing he said was the most reassuring: you don't need the documentation,
+most of the hardware interface is already reverse-engineered, and the docs lack the details that matter anyway.
+The second thing reframed the whole problem. The output coming back as flat zero-point, he said, means the
+pipeline runs end to end — *congrats*. It isn't a stuck engine. It's a data problem. And if the command stream
+is identical, then in order of likeliness it's one of three things: the coefficients, the input, or a register
+write in the kernel.
+
+Then he handed me a method I should have been using all along: stop staring at the twenty-eight-layer model.
+Take *one* convolution. Run it on the CPU and the NPU and compare. The test suite already does exactly this,
+per operation. Isolate first, debug second.
+
+So I did — one conv, five-by-five, sixteen channels in and a hundred and twenty-eight out, the simplest
+standalone conv I could find, nothing to do with mobilenet. On the CPU it produced a real feature map. On the
+NPU it came back with two distinct values in the entire tensor. So the bug isn't in the graph, or the chaining,
+or some interaction between layers — it's in a single convolution, alone. That one fact shrank the search by an
+order of magnitude.
+
+Then I went down his list. The coefficients: I dumped exactly what the compiler encodes for the weights and
+laid it beside the original — varied, the right value range, just repacked into the engine's padded layout.
+Correct. Cross it off. The input: I read the on-chip buffer before and after the job and watched my known input
+ramp appear in it, staged cleanly. Correct. Cross it off.
+
+Which leaves the third — and it lands exactly where the hardware counters had been pointing all along. The
+weights are pulled from memory; the read counter says so. But they never arrive in the on-chip buffer the
+multiplier reads from — a byte-for-byte snapshot of that region is identical before and after the job. The
+weight-load unit reads the coefficients and never sets them down. Two people, one reasoning from a value
+comparison and one from a register counter, walked up to the same locked door from opposite sides.
+
+It's a smaller wire than it was a week ago. Not "the NPU is wrong," not even "the weights are wrong" — the
+weights are correct, and they're read, and they're simply never deposited where they're needed, on this one
+chip, for reasons that aren't in any register I can see. I still don't have the name of the wire. But everyone
+who might know it is standing at the same door now, and the door is a great deal smaller.
