@@ -997,7 +997,33 @@ weights are correct, and they're read, and they're simply never deposited where 
 chip, for reasons that aren't in any register I can see. I still don't have the name of the wire. But everyone
 who might know it is standing at the same door now, and the door is a great deal smaller.
 
-## Thanks
+## The map was already drawn
+
+There was a postscript to that reply: *this could be helpful too*, and a link. It went to a repository I'd
+never have found on my own — someone running convolutions on the bigger sibling chip in pure Python, no vendor
+runtime, no compiler, just register writes straight at the NPU, with pages and pages of notes on exactly how
+the conv path is wired. It is the closest thing to the schematic that exists in the open, and it was sitting in
+a stranger's GitHub the whole time.
+
+It cost me a theory and gave me a better one in the same afternoon. The theory it cost me: I'd been convinced
+the answer was the RK3576's little on-chip scratchpad, that the weights had to live there and didn't. But the
+bigger chip has no such scratchpad at all, and that repo runs convolutions on it perfectly well with everything
+in ordinary DRAM. So on-chip residency was never the wire. Cross off another door — this time one I'd spent two
+flashes trying to open.
+
+What it gave me is the shape of the real one. The weight path, it turns out, is a little decompression engine:
+the coefficients are fed in compressed and unpacked into the buffer on the way. And the thing that recurs, page
+after page in those notes, isn't a register value — it's the *submit*. A real convolution doesn't fit in the
+on-chip buffer in one go; it has to be sliced into tiles, by height and by weight bank, and handed to the engine
+as a sequence of tasks. The author's verdict, in plain text, is that the mainline driver — *my* driver, the open
+one — can't express that slicing, and they gave up on it and went back to the vendor's. Independent stranger,
+same wall, one chip over.
+
+So the wire has a name now, even if I can't yet solder it: it isn't a missing poke, it's the shape of how work
+is submitted to the engine. Which is, oddly, the most hopeful place this has landed. A bug that lives below the
+registers is a bug you escalate. A bug that lives in how the driver tiles and submits a convolution is a bug you
+*write* — in code I can read, against a working reference someone already drew, on a problem that is finally the
+right size for one person and a board.
 
 This stopped being a solo project somewhere in the middle, and that's the best thing that happened to it.
 **[Tomeu Vizoso](https://gitlab.freedesktop.org/tomeu)** — who wrote the open `rocket` driver and the Teflon
