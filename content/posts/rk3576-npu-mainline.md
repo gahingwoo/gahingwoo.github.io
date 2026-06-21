@@ -1040,6 +1040,14 @@ accelerators he had touched. And, quietly, to every developer who has ever sat u
 out of nothing more useful than the refusal to let it win — you are the reason any of this is open at all. The
 compute half isn't solved yet. But it's a much better-lit room with all of you in it.
 
+And the hardware that made any of it possible: this all ran on a **ROCK 4D** I bought at the end of last year,
+betting the RK3576 was worth the trouble; the wider journey owes **ArmSoM** a real debt for sending me a CM5IO
+(4 GB, 32 GB eMMC) to bring up EDK2 on. I'll even thank **Rockchip**, and mean it — without irony. Their closed
+NPU documentation is the wall this entire post is about. But they also built this strange, capable little chip,
+and they ship a GPL kernel driver whose source has been the ground truth under half my debugging. Everything
+here started because of them — the problem and the possibility both. Open work was never about the vendor being
+the enemy; it's about the rest of us getting to keep walking from wherever they set the last stone down.
+
 ## The room
 
 I've wondered why these particular people showed up — a Collabora maintainer, a stranger with the wrong chip
