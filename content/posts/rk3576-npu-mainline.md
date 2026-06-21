@@ -1033,6 +1033,31 @@ method that cut the search by an order of magnitude, and then pointed me at
 [allbilly/rk3588](https://github.com/allbilly/rk3588), a pure-Python register-level NPU reference that turns out
 to be exactly the map for the corner I'm stuck in. Thank you. Thanks too to **VoidChecksum**, who wrote the
 mainline RK3576 enablement series and folded my hardware fixes into it; to **MidG971**, bringing up the RK3568
-sibling at the same wall, one stage back; and to **alchark** and the folks on the Flipper thread for the
-introductions and the honesty about what's NDA'd and what isn't. The compute half isn't solved yet — but it's a
-much better-lit room with all of you in it.
+sibling at the same wall, one stage back; to **alchark** and everyone on the Flipper thread for the
+introductions and the honesty about what's NDA'd and what isn't; and to the **stranger on a forum** who had
+never touched this chip and still put the right word — *race* — on the symptom, from across a dozen other
+accelerators he had touched. And, quietly, to every developer who has ever sat up too late arguing with a board
+out of nothing more useful than the refusal to let it win — you are the reason any of this is open at all. The
+compute half isn't solved yet. But it's a much better-lit room with all of you in it.
+
+## The room
+
+I've wondered why these particular people showed up — a Collabora maintainer, a stranger with the wrong chip
+and the right instinct, someone bringing up the sibling part, the person who wrote the driver. None of them owed
+me anything. None of them get paid for this. And the answer, I think, is simple and a little unfashionable: you
+only recognise the thing in someone else's chest if you're carrying the same thing in your own.
+
+It was never really about the NPU. The NPU is just the wall we all happen to be standing at this month. The
+thing is older than that — the refusal to accept that a closed box gets to stay closed, the conviction that a
+chip you bought should be a chip you're allowed to understand, the plain stubborn pride that says *I will make
+this do the correct thing if it takes a hundred flashes.* You can't fake it and you can't buy it, and the people
+who have it find each other across forums and mailing lists and a bug thread on someone else's repo, because a
+lit lamp carries a long way in the dark.
+
+So here's the part I didn't expect to be the point. Not the driver, not the convolution, not even the win that's
+still out there ahead of me. It's that somewhere in the middle of one person's stubborn argument with a piece of
+silicon, the argument quietly stopped being one person's. There's a whole room now — a dozen different lamps, no
+two pointed quite the same way — all of us leaning toward the same larger thing, the one that's bigger than any
+of our individual boards and worth chasing *because* none of us can reach it alone. The cat still hasn't
+appeared on the screen. But I'm no longer the only one waiting for it, and I've started to suspect that the
+waiting, in this company, was always the better half of the prize.
