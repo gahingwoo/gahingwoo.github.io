@@ -1048,6 +1048,43 @@ and they ship a GPL kernel driver whose source has been the ground truth under h
 here started because of them — the problem and the possibility both. Open work was never about the vendor being
 the enemy; it's about the rest of us getting to keep walking from wherever they set the last stone down.
 
+## Both payloads on the bench
+
+The next thing Tomeu asked for was the obvious experiment I'd somehow never run end to end: dump the *whole*
+payload the vendor runtime hands the hardware for the simplest possible convolution — the command stream and
+every buffer — and lay it next to what Mesa builds for the same op. The command stream I'd already matched
+register for register against a live capture; the half I'd never put under glass was the buffers themselves. The
+actual weights, the actual input, the actual bias, as bytes, from both stacks.
+
+So I built it to be honest about one thing first: that both sides were really running the *same* convolution. I
+took Mesa's own conv2d test — a single 16→128, 5×5 conv — and rebuilt it as a vendor `.rknn` from that file's
+own weights, fed both stacks the identical ramp input, and had each print its buffers back: the vendor kernel
+instrumented to dump the bytes it reads, Mesa's debug knob dumping what it encodes, both coming home as plain
+text over the serial line because the board has no other way out. The one check I insisted on before trusting a
+byte of it — the vendor's input buffer reads back the exact ramp I fed it, so the dump is reading the right
+memory and not some neighbouring garbage.
+
+And the buffers came back clean. Not the answer I was fishing for — clean. Both stacks hand the engine a dense,
+varied weight buffer, ninety-nine percent non-zero, hundreds of distinct values; Mesa's coefficients are not the
+empty or flattened thing I'd half-hoped to catch in the act. The input is the same ramp on both. The bias is
+populated on both. The only buffer in the entire payload that differs is the one Mesa *computes* — the output,
+flat and grey and wrong, the bug itself and nothing upstream of it.
+
+Which is exactly where I had to stop myself telling a story. It is so tempting to read that as *the payload is
+fine, the bug is in the execution* — and I caught myself writing those very words before I deleted them. Because
+the two toolchains quantise independently, the weight bytes differ everywhere; I can prove the buffer is full and
+well-formed, but I cannot byte-for-byte compare the *order* the coefficients are packed in. And a weight packed
+in the wrong order — right values, wrong layout, read by the array as noise — produces the identical picture to a
+clean buffer the engine simply fails to read: dense bytes in, grey nothing out. This dump rules out one thing
+honestly — that Mesa starves the engine of operands. It does not, on its own, tell a packing bug from an
+execution bug. They wear the same face here.
+
+So I sent it back as exactly that and no further: operands sound, output broken, and the one door I couldn't
+open — with the two stacks quantising apart I can't make the packed weights line up byte for byte, and that is
+the comparison that would settle which bug it is. Is there a way to make the vendor toolkit swallow the exact
+int8 weights, or does its runtime expose the repacked coefficients anywhere? The honest version of a finding is
+always smaller than the hopeful one. It also travels further, and you can stand on it.
+
 ## The room
 
 I've wondered why these particular people showed up — a Collabora maintainer, a stranger with the wrong chip
