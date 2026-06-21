@@ -1,8 +1,9 @@
 ---
 title: "Bringing Up the RK3576 NPU on Mainline Linux"
 date: 2026-06-15
+lastmod: 2026-06-21
 tags: ["linux", "rockchip", "npu", "embedded", "rk3576"]
-description: "Chasing all-zero NPU output on the RK3576 — the wrong theories, the layouts I got right, and the one question left: why the compute engines won't wake from the arming."
+description: "Chasing all-zero NPU output on the RK3576 — the wrong theories, the layouts I got right, and where the open road ends: a bug that lives below the registers, a race I could finally rule out, and the strangers who showed up at the same wall."
 showToc: true
 draft: false
 ---
@@ -854,3 +855,71 @@ see inside the silicon. Two weeks ago that would have felt like quitting. It doe
 account of where a bug *isn't* is the most useful thing one person can hand the next, and I've drawn it as
 carefully as I know how. The board still hasn't seen a cat. But I know, finally and exactly, which silence I'm
 listening to — and it isn't one more flash that breaks it. It's someone with the schematic.
+
+## The strangers at the same wall
+
+Here is the part I didn't expect. I wrote the map down, posted it where the right people might pass, and braced
+for the silence you get when one hobbyist hands a four-thousand-page problem to an empty room. Instead, people
+walked up to the wall.
+
+One had written the whole mainline enablement for this NPU without ever owning the chip — clean patches,
+compile-tested, the binding and the driver glue done properly from the manual and the RK3588 prior art. Another
+was bringing up the *sibling* SoC, the RK3568, on the same open stack, and was stuck one step short of where I
+was: his engines wouldn't even wake, where mine woke and then computed wrong. And a stranger on a forum who had
+never touched a Rockchip part in his life read my symptom, pattern-matched it against every NN accelerator
+bring-up he *had* done, and put a single word on it that I'd been circling for a week without daring to commit
+to: *race*. Identical command stream, occasionally correct, mostly wrong — that, he said, isn't a wrong value.
+That's a timing hazard living below the registers. Two of us, from opposite ends of the world and opposite ends
+of the problem, pointing at the same half-millimetre.
+
+The map didn't summon a savior with the schematic. It summoned a small crowd around the same wall, each of us
+holding a different lamp. That turns out to be worth more.
+
+## The race I could finally test
+
+The stranger gave me more than a word; he gave me the one experiment I'd never cleanly run. If the failure is a
+race — the multiplier reaching into the buffer before the fill has truly landed — then *stalling* should move
+it. Drop a deliberate, dumb delay in the last gap before the "go," sweep its length, and watch the success rate.
+A timing hazard responds to delay. A deterministic bug doesn't even notice it. One knob, two possible answers,
+both of them progress.
+
+So I built the knob — a pure busy-wait, runtime-tunable, wedged in right before the start pulse — and I stopped
+trusting single runs. The honest way to measure a maybe-race is statistically: fix the delay, fire the
+convolution twenty times, count how many come back whole. I scored it the only way the hardware would tell me
+the truth, by the bytes the output engine actually wrote: thirty-two channels' worth is a real convolution, two
+channels' worth is the failure. Then I swept — no delay, one microsecond, ten, a hundred, a thousand — and for
+good measure threw in the old warm-up trick that nudges the buffer's ping-pong pointer, in case the hazard was
+there instead.
+
+Dead flat. Two channels of thirty-two, every single run, every delay from a microsecond to a millisecond, with
+the pointer trick and without it. A thousand jobs and not one of them whole. I sat there a little stunned,
+because I'd half-believed the race for two weeks, and here was a clean sweep telling me it never existed — not
+in the window I could reach. A race varies; a race bends to delay. This did neither. The truncation is decided
+*before* the job starts, in the silence between powering the engine up and handing it its first instruction —
+in a state I set and cannot see.
+
+It's a negative result, and it's the most useful one I've gotten. It doesn't fix the bug; it tells me, with a
+sweep instead of a hunch, exactly what shape the bug *isn't*. I'd been chasing a hazard at the moment of the
+shout. The cut was already made before I ever opened my mouth.
+
+## What the board knows that the patch doesn't
+
+I owed the stranger who wrote the mainline patches a Tested-by, so I put his clean, compile-tested series on the
+actual board. It panicked on the first job. An asynchronous machine-check, fired the instant the power framework
+tried to wake the NPU's domain from cold — the exact full-SoC lockup a Collabora engineer had reported on this
+chip a year earlier, the one everyone had filed under "needs hardware to reproduce." It needed hardware. I had
+hardware. The fix was a fifteen-microsecond settle delay on the power-up handshake — a number you cannot derive
+from any manual, only find by watching the silicon flinch.
+
+Past that wall, the buffer's address-translator wouldn't reset: its registers sat behind a clock his node never
+named, so the reset landed on a block with no heartbeat. Past *that*, the convolution truncated. Three walls,
+back to back, and not one of them visible from a compile test — each a settle-delay or a missing clock that only
+the board could teach. His patches weren't wrong; they were good. They simply met a category of bug that no
+amount of review finds, because it isn't in the code — it's in the gap between the code and the die.
+
+That reframed something for me. I'd spent the project quietly envious of the people who could read the engine
+room I couldn't. But there's a contribution that doesn't need the schematic at all, and it's the one I can make
+every day: being the person holding the board, the one who can tell a clean patch from across the world *exactly*
+where it meets the metal and falls down. The platform half of this is going upstream now — his name on the
+series, my three walls folded in as the fixes. The compute half still waits for someone who can see inside.
+But the door I can hold open, I'm holding it open with both hands.
