@@ -1231,3 +1231,46 @@ of scales and shifts per output channel, sitting in a buffer I've only half-read
 line, it's teaching Mesa to quantise the way the chip was always asking. That's real work, and it's
 ahead of me, not behind. But I know the name of the thing now. After three weeks of calling it by the
 wrong names, the wall finally answered to its own.
+
+## The audit, and the note already in the margin
+
+I had the fix half-written again — teach Mesa to pack the weights per channel, the way I'd decoded the
+vendor doing it. And that's exactly when I made myself stop. Twice now I'd been certain and twice the
+board had made me eat it: the packing order was right when I swore it was wrong, the buffer was flat
+when I swore it was grouped. A third confident wrong turn was not just possible, it was the pattern. So
+I did the unglamorous thing. I pretended I was a stranger auditing my own work, and I asked the meanest
+question I had: *have you actually proven it's the weights, or just assumed it?*
+
+I hadn't. Every test I'd run swapped the vendor's *whole* payload at once — command stream and buffers
+together — and declared "it's the userspace." It never separated the two halves. So I made Mesa cough up
+its own command stream for the failing conv and laid it byte-for-byte against the vendor's. And there it
+was, not in the weights at all: the requantise step. The little register that scales the convolution's
+fat internal sum back down to a byte. The vendor shifts it right by twenty-six. Mesa shifts it by
+fourteen. Twelve bits. Four thousand and ninety-six times too hot. The output isn't computed wrong —
+it *overflows*, slams into the rails, and comes back as two values, black and white, every pixel either
+zero or full. The flat grey I'd been cursing for three weeks was a saturation. The engine was screaming,
+not silent.
+
+So the wall was never the weights' arrangement, and never their per-channel precision either — those were
+real differences, but the thing that actually broke the picture was the multiplier running hot and
+clipping. I had been three keystrokes from rewriting the wrong organ.
+
+And then I found the note. In Mesa's own source, in the function that sets that very scale, a comment the
+driver's author had left behind — describing my bug exactly. Per-axis weights. A single global scale
+making the requant multiplier *"~320× too large."* Every normal layer *"saturated."* A stopgap that
+averages the per-channel scales to one number to take the edge off. And a line at the end, pointing
+straight at the buffer I'd spent days reverse-engineering: *the proper per-channel correction belongs in
+the weight-buffer tail, like the vendor — a TODO.*
+
+I sat with that for a while. I had measured my way, over days, to a conclusion that was already written
+down in plain English in a comment I'd scrolled past a dozen times. It is a particular flavour of humbling
+— not that the work was wasted, because I now have the thing on the bench with real numbers, the vendor's
+exact shift and scale and offset, the audit that proves which half is broken. But the map was drawn
+before I started drawing it. Again. The person who wrote this driver stood where I'm standing and saw the
+same wall and named it and then, honestly, left it — because the fix is a real one, hard enough that the
+author of the thing wrote *TODO* and moved on.
+
+That's where I am tonight. Not at the cure. But for the first time standing on the exact spot where the
+cure has to be poured, with the measurements in my hand and a stranger's note in the margin telling me I
+read the wall right. Three reversals in, I've stopped trusting my certainty and started trusting the
+audit. It is slower. It is the only thing that's been right.
