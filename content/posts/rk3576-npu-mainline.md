@@ -1274,3 +1274,47 @@ That's where I am tonight. Not at the cure. But for the first time standing on t
 cure has to be poured, with the measurements in my hand and a stranger's note in the margin telling me I
 read the wall right. Three reversals in, I've stopped trusting my certainty and started trusting the
 audit. It is slower. It is the only thing that's been right.
+
+## The shape that never arrived
+
+So I stopped reasoning. Four reversals had taught me that my certainty was the least reliable instrument
+on the bench, and the cure I kept reaching for kept dissolving the moment the board touched it. What I
+needed wasn't another theory. It was a question the board could only answer one way.
+
+So I built a harness. I took Mesa's own failing command stream — the exact bytes it hands the hardware
+for the conv that comes out grey — and I fed them back through a path I controlled completely, where I
+could reach in and swap a single piece for the vendor's and change nothing else. First it had to fail
+the same way, or the whole thing was theatre, and it did: the same flat grey, two values, black and
+white, reproduced now in my own hands and holding still.
+
+Then I started pulling suspects off the board, one at a time. Swap the requantise math for the vendor's
+— the thing my audit had sworn was the bug. Still grey. Swap the cache configuration — still grey. Swap
+the weights themselves, the per-channel packing I'd spent a week decoding, the thing the author's own
+note pointed at. The output went to pure zero. Every theory I'd built across two weeks, dead in three
+swaps, and not one of them moved the needle.
+
+And then the kernel told me what I'd been too busy theorising to ask. One line, the two internal config
+banks the engine reads its geometry from: both of them zero. Height zero. Width zero. The convolution
+had been firing all along — engaging every unit, dutifully, on an image with no dimensions. It wasn't
+computing the wrong answer. There was no shape to compute. The single register that says *the picture is
+forty by forty* had never reached the part of the engine that needed it. The grey was an engine working
+perfectly on nothing.
+
+Which is the wall from week one. The first wall. The one I'd named a dozen ways and walked away from to
+chase quantisation down a hole that, it turns out, belonged to a different layer's problem entirely. All
+of it — the per-channel decode, the audit, the stranger's note — real work on a real thing, but not on
+*this* thing. The conv that's been failing since the first night was never failing because of any number.
+It was failing because the description of the work doesn't reach the hand that does it.
+
+I'm not sure whether to be deflated or grateful, so I'm choosing grateful. The harness did in a single
+boot what a week of clever reasoning could not: it didn't care what I believed. It removed suspects until
+only the truth was left standing, and the truth was the oldest, plainest thing on the board. Four
+reversals in, I've finally learned the actual lesson — not *audit your conclusions*, that was only
+halfway. It's *stop arguing with the board and start asking it questions you can't talk your way out of.*
+A swap is a question like that. Belief isn't.
+
+So I'm back where I started, at the first wall, and for once that doesn't feel like defeat. Because I'm
+not standing here with a theory this time. I'm standing here with a reproduction I can poke, and a single
+clean yes-or-no left to ask it: if I force the geometry into the engine by hand, does the picture come
+back? I don't know yet. But for the first time in three weeks I'm going to find out by asking, not by
+arguing.
