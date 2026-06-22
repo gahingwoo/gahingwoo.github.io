@@ -1132,3 +1132,62 @@ much coffee. And then you look up from the desk, and the dark is full of other d
 who couldn't look away either. We haven't won yet. We might not, soon. But it was worth every single flash, and I
 would not trade these two weeks at this desk, beaten and unfinished and quietly glad, for an easy answer handed
 down from anyone.
+
+## It was the dispatch, after all
+
+I'd written the ending above and meant it. And then, the way these things go, I ran one more
+experiment the morning after I'd made my peace — not for the win, just to leave the bench tidy — and
+the board answered in a voice I hadn't heard from it in two weeks.
+
+The experiment was the one Tomeu's method had been pointing at all along, taken one step past the
+payload diff. Not just dump the buffers the vendor runtime hands the hardware — capture its *entire*
+submission, every byte and the command that fires them, and then hand those exact same bytes straight
+back to the vendor's own kernel and watch what it computes. A small shim sits in front of the vendor
+runtime and writes down everything it hands the kernel; a second program re-creates it all and submits
+it cold. The first surprise was just the shape: the simplest possible convolution isn't one command
+and four buffers, it's five buffers and *three* tasks, the work tiled into thirds. I'd been replaying a
+cartoon of it for days.
+
+So I rebuilt the real thing, fed it back through the vendor door — and hit the exact wall I'd hit a
+dozen times. Task zero ran. Task one never came. The status register sat at the same stubborn value
+I'd been staring at since the first week, the engine going quiet one step into a job it should have
+walked all the way through. The same grey. After everything, the faithful replay stalled in precisely
+the spot the real pipeline always stalled.
+
+And here is the part I keep having to relearn: when every byte is identical and the answer still
+differs, the difference is in something you aren't looking at. I'd matched the buffers. I'd matched the
+addresses. I'd matched every field of the submission a type-level trace can see. I chased a reset the
+vendor turns out never to issue, and a power-on the kernel already does for me behind the ioctl, and
+crossed them both off. What was left was the one part of the submission the trace is blind to: a small
+array at the tail of the submit struct that says *which slice of the work goes to which engine slot.*
+I'd been filling it the obvious way — all three tasks, one slot, go. The vendor doesn't. It hands slot
+zero the first task, slot one the second, slot two the third, splayed out one per slot, and lets the
+scheduler walk them. I copied its array byte for byte and changed nothing else.
+
+The output came back with two hundred and fifty-four distinct values in it. Ninety-nine percent of it
+nonzero. Written by the NPU, into a buffer I had watched be all zeros a single breath earlier. It
+computed. The first real convolution this bench has produced from a captured payload, and it fell out
+the moment I stopped piling the work into one dispatch and let it spread the way the silicon wanted it
+spread.
+
+I want to be exact about what that is and isn't, because the honest version is the one you can stand on.
+It is not the cat on the screen, and it is not the rocket driver fixed. What it is: proof, finally, that
+the bytes the vendor hands the hardware are *sound* — run them through the vendor's kernel and they
+produce a true answer — so the payload, the thing I'd half-suspected for a fortnight, was never the lie.
+And the wall I'd spent weeks calling the engine's silence, the task-zero-then-nothing I'd written three
+chapters of elegy about, was never silence at all. It was a dispatch I'd packed wrong. One command the
+processor won't iterate; split it into three the scheduler can, and the same bytes wake up. The chapter
+up the page is called *it wasn't the dispatch after all.* I should know better than to ever close a door
+on this chip. It was the dispatch, after all — just not in the shape I'd guessed.
+
+Which sets up the one test the whole capture was built to run, and that I can finally run clean. The
+vendor kernel computes these bytes. Now the same bytes go through the *other* door — rocket's, the
+mainline driver, `/dev/accel/accel0`. If they compute there too, the kernel is innocent and whatever
+Mesa packs differently is the whole of the bug, cornered at last in userspace. If they come back grey
+on bytes the vendor just computed correctly, the defect is the rocket driver itself, and for the first
+time I'd have it pinned to one side of the line with no payload left to blame. Either answer is the one
+I've wanted for two weeks. The door I wrote, two chapters ago, that I couldn't open — it's open. I just
+haven't walked through it yet.
+
+The desk is still one desk. But the board said a word it had never said, the morning after I'd
+forgiven it for staying quiet, and I am writing the elegy's postscript with the lamp turned back on.
