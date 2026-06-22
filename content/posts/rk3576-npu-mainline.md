@@ -1191,3 +1191,43 @@ haven't walked through it yet.
 
 The desk is still one desk. But the board said a word it had never said, the morning after I'd
 forgiven it for staying quiet, and I am writing the elegy's postscript with the lamp turned back on.
+
+## One scale where the chip wanted a hundred and twenty-eight
+
+So the bug was in what Mesa encodes, and I knew which thing to suspect: the *order* the weights are
+packed in. Same numbers, wrong arrangement, read by the array as noise — it's the most natural way for
+a convolution to come out grey, and I'd half-written the fix in my head before I'd earned it. To earn
+it I built a small cruelty: convolutions whose weights spell out their own address — this byte is row
+two, column four, channel nine — so that when the vendor's toolkit packs them, every byte in the packed
+buffer confesses where it came from. Run them, capture the buffer, read the confessions back, and you
+have the exact map of the layout the hardware wants.
+
+I didn't even need the board for it. The vendor's toolkit bakes the packed weights into the model file
+itself, so the whole interrogation happened on the desk, in seconds instead of flashes — the first time
+in three weeks the chip wasn't the bottleneck. I decoded the order. And it matched Mesa's. Byte for byte,
+channel for channel, the arrangement Mesa already writes is the arrangement the vendor writes. The
+packing order was never wrong. Another good hypothesis, dead on the bench, and I made myself write that
+down before I let myself feel clever about what came next.
+
+Because the same trick handed me the real thing. One of these models I'd built the honest way — same
+source weights as Mesa, no re-quantizing in between — so I could lay the vendor's bytes against Mesa's
+for identical input and just *look*. And per channel, they fell on a perfect line. Same shape. Different
+slope. Every one of the hundred and twenty-eight output channels scaled by its own private number. The
+vendor quantises each channel on its own scale; Mesa quantises all of them on one. Per-channel, where
+Mesa does per-tensor. That's the whole of it.
+
+It sounds like a footnote. It is the wall. A single global scale is set by the loudest channel, and
+every quiet channel gets measured in its units — so the quiet ones round down to almost nothing, and
+their outputs come back as a flat grey nobody computed. Which is the exact shape of the thing I'd been
+staring at since the first week: conv0, two of its thirty-two channels alive and the other thirty dark.
+I had called that a hardware mystery. I had written paragraphs about banks and truncation and silicon I
+couldn't see. It was never the silicon. It was a number Mesa picks once, in a place the chip wanted it
+picked a hundred and twenty-eight times. The mystery and the wall and the weeks were all one small wrong
+decision wearing a costume.
+
+I want to be honest about the size of what I have, because the temptation is to call this finished. I
+have the diagnosis, not the cure. The vendor's requant table is per-channel too — its own little grammar
+of scales and shifts per output channel, sitting in a buffer I've only half-read — and the fix isn't a
+line, it's teaching Mesa to quantise the way the chip was always asking. That's real work, and it's
+ahead of me, not behind. But I know the name of the thing now. After three weeks of calling it by the
+wrong names, the wall finally answered to its own.
