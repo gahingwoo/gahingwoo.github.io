@@ -1393,3 +1393,59 @@ reading the wrong number. The wall is back to its full height, and I'm back at t
 quantised numbers themselves, carrying one thing I didn't have three weeks ago: proof, paid for in five
 wrong certainties, that it was never the words. Retracting your own breakthrough the morning after isn't the
 failure. It's the tax on the only method that's ever worked.
+
+## It was the numbers after all, and they were a buffer at the tail
+
+I went back to the harness with the one thing five reversals had bought me: the words were innocent, so
+stop reading them. The failure was in the numbers the stream points at, and there were only ever three —
+the weights, the bias, the rescale. The method by now wrote itself. Make the failure hold still, then pull
+one number off the board and put the vendor's in its place, and change nothing else.
+
+First I had to be sure the harness wasn't lying to me the way the register had. So I booted a board whose
+only job was to run the real Mesa conv — not my reconstruction, the genuine article through the genuine
+delegate — and watch what the kernel saw. It saw exactly what my harness sees: the same flat grey, two
+values, and every operand buffer arriving full and real — the input a clean ramp, the weights varied, the
+bias varied. Good numbers going in, grey coming out. The reproduction is faithful. I can trust the bench.
+
+Then the swaps. The vendor's whole coefficient payload — its weights and its bias buffer together — into my
+failing run. The picture came back. Not grey: a real feature map, ninety-eight distinct values where there
+had been two, ninety-nine percent of the field alive. The command stream was Mesa's, the submit was Mesa's
+single task, and with the vendor's numbers underneath it the convolution simply worked. Which closes two
+doors at once that I'd spent nights leaning on: it isn't the words, and it isn't how the job is handed to the
+chip. Mesa's one-task submit computes the entire convolution when the numbers are right. The defect is the
+numbers, and nothing but.
+
+So which number. I put Mesa's own weights back — the per-channel packing I'd spent a week decoding and had
+half-convinced myself was wrong — and kept only the vendor's bias buffer. The picture stayed. Two hundred
+and fifty-two distinct values, cleaner than before. Mesa's weights are *fine*. They were always fine. The
+entire three-week failure lives in one buffer at the tail of the coefficients — the little per-channel table
+that carries the rescale and the zero-point correction, the thing the stranger's note had pointed at on the
+very first read and I'd walked past four times to chase grander theories. One buffer. The author had even
+left himself a comment about it: *this belongs in the weight-buffer tail, like the vendor — a TODO.*
+
+And the gauge I'd built a breakthrough on and then torn down? It read zero this whole time, through every
+run that *computed*. The engine had been getting its shape all along. It was never the geometry; the register
+that says "no height, no width" just clears itself faster than my instrument can blink, and I'd spent a week
+eulogising a wall that wasn't there. The grey was never an engine working on nothing. It was an engine working
+perfectly on a bias table that lied to it about the answer.
+
+I could have stopped there — bug located, one buffer, a clean upstreamable sentence. But located isn't fixed,
+and I had a known-good copy of the right buffer sitting on the bench, so I asked it the next question off the
+board: what *is* this table, in terms I could compute myself? Most of it wouldn't say. The per-channel scale
+the vendor folds in is its own toolkit's private choice, unrecoverable from a per-tensor model — and it
+doesn't need recovering, because a per-tensor convolution wants a per-tensor rescale anyway. But the one term
+that carries the bias and the zero-point correction, the part Mesa actually computes and gets wrong — that one
+fit. Across all hundred and twenty-eight channels, the vendor's value is exactly proportional to *(input
+zero-point times the weight sum, minus the bias)*, to within the per-channel scale, ninety-nine percent of the
+variance. Mesa computes the same term with the sign backwards on the weight sum, the zero-point factor missing,
+and a stray power-of-two where the output scale belongs. Three small wrongs in one line.
+
+It isn't fixed tonight. When I forced the corrected term onto the board it still saturated — because the whole
+rescale stage runs four thousand times hotter than Mesa's single shift accounts for, and the output clips to
+white before my corrected number ever gets a vote. That last piece — the scale, the shift, the factor of four
+thousand and ninety-six the vendor carries and Mesa drops — is the only wall left, and for once it's a wall
+made of arithmetic I can do at the desk instead of a register I have to interrogate at midnight. After three
+weeks of being wrong about which room the wall was in, I finally have it cornered in one line of one function,
+with a formula that fits and a known-good answer to check against. Not a yes yet. But the closest thing to one
+this board has let me hold, and this time I built it the only way that's ever worked: by being wrong cheaply,
+on the bench, until the numbers had nowhere left to hide.
