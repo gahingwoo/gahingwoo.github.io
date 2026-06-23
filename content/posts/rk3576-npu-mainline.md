@@ -1449,3 +1449,41 @@ weeks of being wrong about which room the wall was in, I finally have it cornere
 with a formula that fits and a known-good answer to check against. Not a yes yet. But the closest thing to one
 this board has let me hold, and this time I built it the only way that's ever worked: by being wrong cheaply,
 on the bench, until the numbers had nowhere left to hide.
+
+## The one line, and the wall behind it that isn't arithmetic
+
+I had the term cornered and a formula that fit, so I did the obvious thing: I built the corrected bias
+table by hand, with the sign the data had insisted on, and fed it to the board at the scale the math said
+was right. It saturated. White, two values, exactly the grey I started with — and not just close to the
+baseline, *identical* to it, the same four bytes. Which is its own kind of answer: at that scale the table
+I'd spent the evening correcting wasn't wrong, it was *invisible*. The output was clipping before my number
+got a vote. So I ran the same table again at the vendor's colder scale, a factor of four thousand down, and
+it twitched — two distinct values became three. Three. After all that, the convolution went from a coin to
+a slightly more interesting coin.
+
+I sat with that for a while. Three is the sound of a hypothesis being not-quite-wrong, which is worse than
+wrong, because wrong tells you to turn around and not-quite tells you to keep walking into the same wall.
+But the two failures together actually said something clean, if I stopped wanting them to say what I'd hoped.
+The bias term was never the thing that scales the picture. The scaling lives in the *other* fields of that
+little table — a per-channel multiplier and shift the vendor fills in and I'd been zeroing out, the part that
+turns a raw accumulator into a number between nought and two-fifty-five. And those fields don't come from any
+arithmetic I can do on the model. I tried. Every fixed-point story I told — the scale goes here, the shift is
+this, the accumulator runs seven bits hot, no, twelve — the board falsified each one in a single boot. The
+numbers in that table aren't a formula I'm failing to spot. They're the output of a datapath I haven't read.
+
+So this is where the honest line gets drawn. Everything *structural* is nailed down and it's nailed down hard:
+the defect is one buffer, the bias correction is provably the wrong sign and missing a term, and I can prove
+each of those on the bench in a single swap. That much is a patch the moment someone wants it. But the last
+piece — the exact way this chip's rescale stage folds a multiplier and a shift and a per-channel scale into a
+byte — isn't something I can brute-force from outside. It wants the manual. The actual description of how the
+SDP, the part of the engine that converts the convolution's verdict back into a pixel, does its fixed-point
+arithmetic. Without that I'm guessing at the last digit of a combination I've otherwise fully dialled.
+
+And here's the thing I keep turning over, the reason I'm not putting it down. This rescale stage isn't
+RK3576's. It's the same NVDLA-descended converter that sits at the bottom of every layer Mesa's Teflon
+backend will ever run on this whole family of NPUs — the per-channel requantise that the author's own note
+calls a TODO and that nothing in the open stack does correctly yet. Get it right once, with the datapath in
+hand instead of guessed, and it isn't a fix for my one grey convolution. It's the missing floor under
+quantised inference for an entire line of hardware that, today, can stage the data, load the weights, fire
+every unit — and still hand you back a number that means nothing. I've spent three weeks proving where the
+floor is missing. I'd like, before I'm done, to be the one who pours it.
