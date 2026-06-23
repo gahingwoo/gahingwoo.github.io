@@ -1487,3 +1487,43 @@ hand instead of guessed, and it isn't a fix for my one grey convolution. It's th
 quantised inference for an entire line of hardware that, today, can stage the data, load the weights, fire
 every unit — and still hand you back a number that means nothing. I've spent three weeks proving where the
 floor is missing. I'd like, before I'm done, to be the one who pours it.
+
+## Two tables, and the one nobody fills
+
+The bias term was right and it wasn't enough, so I went back to the bench with a sharper knife. If the
+correction lives in that little table at the tail of the coefficients, then I'd take the vendor's known-good
+copy of it and dismantle it field by field, zeroing one column at a time, until the board told me which column
+was load-bearing. There turned out to be more of them than I'd been drawing.
+
+The table isn't one table. The rescale stage reads from *two* surfaces — an integer block with the bias and a
+couple of small per-channel numbers, and a second block, pointed at by its own register, full of
+floats. I'd been treating the whole thing as the integer block and quietly ignoring the float one. So I tried
+the obvious cuts. Bias alone, everything else zeroed: the picture collapsed to a single flat value, the bare
+offset, the convolution contributing nothing. Bias and the small integers, but the floats zeroed: still grey,
+two values. Only with *both* surfaces intact did the real feature map come back. The floats aren't decoration.
+They're half the arithmetic.
+
+And here's the part that turned a mystery into a bug report: Mesa never writes that second surface at all. It
+allocates exactly enough room for the integer block and a scrap of padding, and the register that's supposed to
+point at the float table points instead straight into that padding — at zeros. Every convolution this backend
+has ever run handed the rescale stage half its coefficients and a fistful of nothing for the rest. That's not a
+wrong number. That's a table that was never laid.
+
+So I tried to lay it. I pulled the vendor's float block apart looking for the formula — and this is where the
+honest road runs out for now. The first float is the weight scale, plain as day. The next hundred and
+twenty-eight are per-channel, signed, and they fit *nothing* I can compute from the model: not the weight
+scales, not the bias, not any combination of the quantities a per-tensor convolution actually has. They're the
+output of the vendor's per-channel re-quantiser, the one that re-scales every output channel on its own before
+it ever reaches the chip — and that re-quantiser lives in a compiled blob, not in any readable line of anything.
+I proved it the only honest way: every formula I could write, I built into a table and fed to the board, and
+the board said no to all of them. The numbers in that float block are not a pattern I'm failing to see. They're
+a decision made somewhere I can't read.
+
+Which is a strange place to end a day and still call it the best one in three weeks. Because *cornered* is not
+*beaten*. I know exactly what's missing now — not "the quantisation, somewhere," but a specific second surface,
+in a specific format, that the open driver doesn't populate and the closed toolkit fills with per-channel
+numbers I can't yet derive. That's no longer a haunting. It's a spec-shaped hole, the precise dimensions of the
+thing I need to find or to work out: how this chip's converter folds an integer bias and a float scale into a
+byte. Three weeks ago I had a grey square and a hundred theories. Tonight I have two tables, one of them empty,
+and the exact shape of the answer that fills it. I'm not done. But for the first time I can see the edges of
+done from here.
