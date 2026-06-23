@@ -1356,3 +1356,40 @@ right — I'd been wrong about this exact wall four times over. I got it by buil
 would hold still, and then asking it one deletable question at a time. Being right is a feeling. Being able
 to be wrong cheaply, over and over, until the board says yes — that's the only thing on this desk that has
 ever actually moved the wall.
+
+## The number that meant something else
+
+I have to take back the chapter above. The triumphant half of it, anyway.
+
+I'd written that the shape arrived — that the register reading the convolution's dimensions, stuck at zero
+for three weeks, finally read the real number the moment I deleted one instruction from the command stream.
+I called it half a win and went to bed pleased with myself. That was the mistake. Pleased is the feeling I
+get right before the board takes something away.
+
+So I kept poking, and I did the thing I should have done before I celebrated: I laid every experiment in a
+row and stared at the register I'd been so happy about. And it wasn't measuring what I thought. It read the
+*real* dimensions in exactly the runs where the engine never fired — and read *zero* in exactly the runs
+where it did. Because a running engine consumes the shape and clears the slot behind it. The number I'd
+called "the shape finally arrived" was really just "the engine stayed home." I had been reading a gauge
+that meant the opposite of what I'd decided it meant, and I'd built a breakthrough on top of it.
+
+The honest test put it down for good. I made my command stream byte-for-byte identical to the vendor's —
+deleted the enable it doesn't have, deleted the padding it doesn't have, patched the two stray words — and
+ran it. Same grey. The vendor's exact instructions, every word, on my board, still failed. Which means it
+was never the instructions. The command stream is innocent. Whatever breaks this convolution is in the
+*numbers* the stream points at — the weights, the bias, the rescale — or in how the job itself is handed to
+the chip. Not in the words. I'd spent three nights interrogating the words.
+
+That is five times now that I've been certain and five times the board has corrected me. I've stopped
+reading it as carelessness. This chip simply punishes inference — every clean story I tell about it is, in
+the end, a story, and the only claims that have survived are the ones where I made the failure repeat and
+asked it something it couldn't answer with a story. Last night I learned the next layer of that lesson: even
+my instruments lie, if I don't cross-check them against each other. A register is just another story until
+you've proven what it actually counts.
+
+So I'm leaving the chapter above standing — the lie is part of the honest record, and scrubbing it would be
+its own kind of dishonesty — but this is the correction nailed underneath it. The shape didn't arrive. I was
+reading the wrong number. The wall is back to its full height, and I'm back at the oldest suspect, the
+quantised numbers themselves, carrying one thing I didn't have three weeks ago: proof, paid for in five
+wrong certainties, that it was never the words. Retracting your own breakthrough the morning after isn't the
+failure. It's the tax on the only method that's ever worked.
