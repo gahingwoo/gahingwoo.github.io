@@ -1318,3 +1318,41 @@ not standing here with a theory this time. I'm standing here with a reproduction
 clean yes-or-no left to ask it: if I force the geometry into the engine by hand, does the picture come
 back? I don't know yet. But for the first time in three weeks I'm going to find out by asking, not by
 arguing.
+
+## The shape arrived, and then it hung
+
+The answer came back half a yes, and I'll take it.
+
+I'd narrowed the difference between Mesa's failing command stream and the vendor's working one down to almost
+nothing — the same setup, the same geometry, the same arming, register for register. What was left was a
+single instruction Mesa tacks onto the very end of its stream: an *enable*, the word that tells the units to
+go. The vendor doesn't put it in the stream at all. It hands that one word to the driver instead, to be
+spoken at the right moment. So I deleted Mesa's copy and asked the board the only question that mattered:
+without that trailing enable, does the geometry finally land?
+
+It landed. The register that had read zero for three weeks — no height, no width, the engine politely
+convolving a picture with no dimensions — came back holding the real number. The shape arrived. And the
+reason was almost cruelly simple: it's a producer-and-consumer dance, two banks, the stream writing the
+geometry into one while the engine reads the other, and a swap between them at the right beat. Mesa's
+trailing enable was firing that swap a beat too early — flipping the engine to read the bank that hadn't
+been filled yet. Every time. For three weeks. The vendor never had the problem because it never put the
+enable where it could trip the swap; it spoke the word from outside the dance, after the music stopped.
+Mesa spoke it on the downbeat, every time, and wondered why the floor was empty.
+
+That is a real finding. One entry to delete, and where it belongs instead — close enough to a patch that I
+could almost write the commit message. After three weeks of naming this wall wrong and chasing it down two
+layers that turned out to be other rooms' problems, I finally have a brick of it out, in writing, reproduced
+in a harness I can poke at will.
+
+But only half a yes. Because the instant the shape was right and I gave the engine the green light, it took
+the convolution, started it — and never came back. Not grey this time. Not zero. A hang. Somewhere past the
+geometry there's a second missing thing — maybe the scratch buffer the vendor quietly allocates and Mesa
+doesn't, maybe that same enable spoken at a different wrong moment — and the engine walks into it and stops.
+The wall didn't fall tonight. A brick came out, and through the gap there's a little daylight and, just past
+it, more wall.
+
+I keep arriving at the same lesson by a different door. I didn't get this brick by being clever or by being
+right — I'd been wrong about this exact wall four times over. I got it by building a place where the failure
+would hold still, and then asking it one deletable question at a time. Being right is a feeling. Being able
+to be wrong cheaply, over and over, until the board says yes — that's the only thing on this desk that has
+ever actually moved the wall.
