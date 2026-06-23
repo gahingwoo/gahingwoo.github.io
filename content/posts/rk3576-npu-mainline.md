@@ -1255,25 +1255,28 @@ So the wall was never the weights' arrangement, and never their per-channel prec
 real differences, but the thing that actually broke the picture was the multiplier running hot and
 clipping. I had been three keystrokes from rewriting the wrong organ.
 
-And then I found the note. In Mesa's own source, in the function that sets that very scale, a comment the
-driver's author had left behind — describing my bug exactly. Per-axis weights. A single global scale
-making the requant multiplier *"~320× too large."* Every normal layer *"saturated."* A stopgap that
-averages the per-channel scales to one number to take the edge off. And a line at the end, pointing
-straight at the buffer I'd spent days reverse-engineering: *the proper per-channel correction belongs in
-the weight-buffer tail, like the vendor — a TODO.*
+And then I found the note. In Mesa's own source, in the function that sets that very scale, a comment
+describing my bug exactly. Per-axis weights. A single global scale making the requant multiplier *"~320×
+too large."* Every normal layer *"saturated."* A stopgap that averages the per-channel scales to one
+number to take the edge off. And a line at the end, pointing straight at the buffer I'd spent days on the
+bench picking apart: *the proper per-channel correction belongs in the weight-buffer tail, like the
+vendor — a TODO.*
 
-I sat with that for a while. I had measured my way, over days, to a conclusion that was already written
-down in plain English in a comment I'd scrolled past a dozen times. It is a particular flavour of humbling
-— not that the work was wasted, because I now have the thing on the bench with real numbers, the vendor's
-exact shift and scale and offset, the audit that proves which half is broken. But the map was drawn
-before I started drawing it. Again. The person who wrote this driver stood where I'm standing and saw the
-same wall and named it and then, honestly, left it — because the fix is a real one, hard enough that the
-author of the thing wrote *TODO* and moved on.
+I sat with that for a while, because I knew the handwriting. It was mine. I'd written that comment weeks
+earlier, the first time the per-axis scale problem bit me — measured the requant multiplier blowing up
+hundreds of times too large, watched every normal layer saturate, dropped in the mean-collapse stopgap to
+take the edge off, and left myself the line in the margin pointing at the buffer I'd one day have to fill.
+Then I half-forgot I'd written it, and spent days measuring my way back to a conclusion I'd already set
+down in plain English in my own hand. I'd gone looking for whoever had charted this wall before me — and
+the only mark in the margin was the one I'd left. There is no predecessor here. The driver upstream
+doesn't name this wall; it just declines to walk up to it — per-axis quantisation, the check reads, *not
+supported*, and the model is turned away at the door before it can fail. Nobody on the open side had stood
+where I'm standing and read this wall right, because nobody had been let through to it.
 
 That's where I am tonight. Not at the cure. But for the first time standing on the exact spot where the
-cure has to be poured, with the measurements in my hand and a stranger's note in the margin telling me I
-read the wall right. Three reversals in, I've stopped trusting my certainty and started trusting the
-audit. It is slower. It is the only thing that's been right.
+cure has to be poured, with the measurements in my hand and a note in the margin — my own — telling me I'd
+read the wall right the first time. Three reversals in, I've stopped trusting my certainty and started
+trusting the audit. It is slower. It is the only thing that's been right.
 
 ## The shape that never arrived
 
@@ -1289,7 +1292,7 @@ white, reproduced now in my own hands and holding still.
 
 Then I started pulling suspects off the board, one at a time. Swap the requantise math for the vendor's
 — the thing my audit had sworn was the bug. Still grey. Swap the cache configuration — still grey. Swap
-the weights themselves, the per-channel packing I'd spent a week decoding, the thing the author's own
+the weights themselves, the per-channel packing I'd spent a week decoding, the thing my own
 note pointed at. The output went to pure zero. Every theory I'd built across two weeks, dead in three
 swaps, and not one of them moved the needle.
 
@@ -1302,7 +1305,7 @@ perfectly on nothing.
 
 Which is the wall from week one. The first wall. The one I'd named a dozen ways and walked away from to
 chase quantisation down a hole that, it turns out, belonged to a different layer's problem entirely. All
-of it — the per-channel decode, the audit, the stranger's note — real work on a real thing, but not on
+of it — the per-channel decode, the audit, the note in my own hand — real work on a real thing, but not on
 *this* thing. The conv that's been failing since the first night was never failing because of any number.
 It was failing because the description of the work doesn't reach the hand that does it.
 
@@ -1419,9 +1422,9 @@ So which number. I put Mesa's own weights back — the per-channel packing I'd s
 half-convinced myself was wrong — and kept only the vendor's bias buffer. The picture stayed. Two hundred
 and fifty-two distinct values, cleaner than before. Mesa's weights are *fine*. They were always fine. The
 entire three-week failure lives in one buffer at the tail of the coefficients — the little per-channel table
-that carries the rescale and the zero-point correction, the thing the stranger's note had pointed at on the
-very first read and I'd walked past four times to chase grander theories. One buffer. The author had even
-left himself a comment about it: *this belongs in the weight-buffer tail, like the vendor — a TODO.*
+that carries the rescale and the zero-point correction, the thing my own note had pointed at on the
+very first read and I'd walked past four times to chase grander theories. One buffer. I'd even left
+myself the comment, weeks back: *this belongs in the weight-buffer tail, like the vendor — a TODO.*
 
 And the gauge I'd built a breakthrough on and then torn down? It read zero this whole time, through every
 run that *computed*. The engine had been getting its shape all along. It was never the geometry; the register
@@ -1481,8 +1484,9 @@ arithmetic. Without that I'm guessing at the last digit of a combination I've ot
 
 And here's the thing I keep turning over, the reason I'm not putting it down. This rescale stage isn't
 RK3576's. It's the same NVDLA-descended converter that sits at the bottom of every layer Mesa's Teflon
-backend will ever run on this whole family of NPUs — the per-channel requantise that the author's own note
-calls a TODO and that nothing in the open stack does correctly yet. Get it right once, with the datapath in
+backend will ever run on this whole family of NPUs — the per-channel requantise that nothing in the open
+stack does correctly yet, that the driver upstream doesn't even attempt, and that the only note naming it
+anywhere is the one I left in my own tree. Get it right once, with the datapath in
 hand instead of guessed, and it isn't a fix for my one grey convolution. It's the missing floor under
 quantised inference for an entire line of hardware that, today, can stage the data, load the weights, fire
 every unit — and still hand you back a number that means nothing. I've spent three weeks proving where the
@@ -1539,3 +1543,5 @@ Once you see that, the whole table un-knots in an afternoon. The integer block a
 I want to be straight about what's still open, because the honest line matters more than the triumphant one. I can prove the shape of the buffer — bias here, scalar there, weights in float at the back — and I can prove it the only way I trust, by putting known answers in and reading them out of six different captures. What I haven't pinned to the last byte is the exact *order* the chip wants those float weights tiled in: kernel-innermost, yes, I can see that much plainly, but the precise march of input and output channels around it I'm still drawing out, and two of my index captures came back muddled enough that I don't yet trust them for it. So I'm not standing here with a working convolution. I'm standing here with a buffer whose three parts I can name, two of which I can write today, and a third that's no longer a spec-shaped hole in the dark — it's the weights, in a layout I'm most of the way through reading off the bench.
 
 Three weeks ago I had a grey square and a hundred theories. Last week I had two tables, one of them empty, and called it the best day in three. This week the empty one filled itself, and what filled it was the most ordinary thing in the model — the weights I'd been feeding the chip the whole time, asked for a second time in a different coat. The last mystery in this convolution turned out not to be a number I couldn't compute. It was a number I'd already written, that I just hadn't recognised coming back.
+
+And that's the part I want to leave standing, past the arithmetic. When I started this, I had exactly one thing the engine never gave up willingly: [allbilly's](https://github.com/allbilly/rk3588) register-level RK3588 reference — a stranger's hand-drawn map of the same NVDLA core, worked out from outside and left in the open for whoever came after. I read it like scripture. Nobody had drawn the RK3576 one. The open driver turns this hardware away at the door — *per-axis quantisation: not supported* — and the only people who've charted its rescale stage keep the chart inside a compiled blob. So the notes I've been leaving in the source as I go, the ones I scrolled past and then realised were in my own hand — wrong sign here, missing term there, the cure lives in the weight-buffer tail, the weights get written twice and we write them once — those aren't only my working. They're the map. The next person who brings this chip up on the open stack is going to walk into this exact grey square, and when they go looking for whoever read the wall first, the hand in the margin is going to be mine. That's the thing I didn't have three weeks ago and the next person will: someone went first, and wrote it down.
