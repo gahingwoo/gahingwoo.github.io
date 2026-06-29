@@ -8,6 +8,25 @@ showToc: true
 draft: false
 ---
 
+## TL;DR
+
+Goal: run MobileNet on the RK3576's NPU through the open `rocket` driver + Mesa Teflon — the same
+stack is byte-perfect on the RK3588, so the bug is RK3576-specific. A month of all-zero output later:
+
+- **The int8 convolution is byte-correct now.** The "all-grey" wall was a fixed-point bug: the rescale
+  multiplier went out at Q14 where the chip wants Q4 — 2¹⁰ too hot, so every pixel saturated. Fix that
+  (plus a pad value and a bias term) and a single conv matches the CPU reference byte-for-byte.
+- **MobileNet end-to-end still returns zero**, behind two walls that live *below the registers*: the
+  command stream I send is byte-identical to the vendor's and the chip still behaves differently. One is
+  the whole-graph engage (the units won't re-arm for each task); the other is depthwise convolution (the
+  op never fires or writes, whatever I feed it — weights, input, even a forced constant on the last
+  stage). Ordinary convolutions compute fine on the same path.
+- So **the open driver is exonerated** — every byte I hand the chip matches the vendor's; the gap is in
+  silicon execution. Next is a hardware trace, or the on-chip weight SRAM the vendor uses and the open
+  driver doesn't.
+
+The rest is the long version — mostly me being wrong, in order.
+
 The RK3576 has a 6 TOPS NPU and the open-source `rocket` driver targets it. I got a
 full MobileNet run going — 252 hardware jobs, no hangs, no faults — and every single
 output byte was zero. This is roughly how the next two weeks went. Mostly it's me
