@@ -1,7 +1,7 @@
 ---
 title: "Bringing Up the RK3576 NPU on Mainline Linux"
 date: 2026-06-15
-lastmod: 2026-06-27
+lastmod: 2026-06-29
 tags: ["linux", "rockchip", "npu", "embedded", "rk3576"]
 description: "Chasing all-zero NPU output on the RK3576 — the wrong theories, the layouts I got right, and where the open road ends: a bug that lives below the registers, a race I could finally rule out, and the strangers who showed up at the same wall."
 showToc: true
@@ -1725,3 +1725,23 @@ So I made it prove it. I timed each run and counted the hardware jobs. The CPU d
 That's progress wearing a disappointing face. Months ago, on this same wall, the sequencer ran exactly one layer and stalled; getting it to iterate all twenty-eight back-to-back off a single submission was its own small war, and that one's won. What's left is older and meaner: the ping-pong. Each unit reads its geometry — the picture's height and width — out of one of two banks, and a state machine flips which bank between tasks. The producer writes the dimensions into one bank; the executer reads the other, finds it empty, and runs the layer on a picture with no size. Every layer computes perfectly, on nothing.
 
 I spent a while poking at it from the userspace side, forcing the bank-select register the way I wanted, and it changed nothing — because the kernel arms that register itself, after my command stream, and its choice is the one that sticks. So the fix isn't in the part I can flash in seconds; it's down in the driver, in how it sets up that ping-pong before each job. That's the next dig, and it wants a kernel rebuild, not a register poke. The conv was the wall I'd been warned was the hard one. It's behind me. This one's just next.
+
+## The dispatch, two locks of three
+
+The whole-graph path had been sitting in the driver the whole time, gated off behind a flag because it never worked before the conv was correct — so every dispatch test I'd run was the fragmented per-layer fallback, which chops the graph into two-task chunks and one of them points at address zero. With the conv fixed I could finally turn the real path on, and two of the three locks opened.
+
+The graph now submits as one job — twenty-nine tasks, one base address, one enable pulse — and the sequencer walks all of them, task zero through twenty-eight, off that single pulse. That's the iteration I'd watched the vendor do and couldn't reproduce a month ago; it runs on the open driver now. And a single convolution sent down that same whole-graph path computes byte-for-byte correct: the unit engages, writes its output, the numbers match.
+
+The third lock held. Run the full twenty-nine-task graph and the sequencer dutifully counts to twenty-eight while every unit stays dark — engaged for one task, never re-engaged for the next, no output written. The vendor's executers re-arm themselves from the ping-pong pointer at each task; the open driver's don't, and nothing I can write into the stream makes them. It's the same "the engage is hardware state, not a register" wall the person bringing up the sibling RK3568 is stuck behind, one room earlier. So the next capture isn't *what* the vendor writes — I've matched that byte for byte — it's *what its sequencer does between tasks* that mine doesn't.
+
+## The other door opened, onto the same kind of wall
+
+The whole-graph engage was a hardware secret I couldn't write into the stream, so I stopped pushing on it and took the other door: run the network one layer at a time, each its own job, and let the kernel chain them. That path turned out to be sound all along — the driver already feeds each layer's output buffer into the next layer's input, and the kernel makes job N+1 wait for job N to finish. Nothing to build.
+
+And the first thing it did was tell me I'd been lied to by my own setup. For weeks the first convolution had won maybe one run in ten — a coin-flip race I'd written three thousand words about. On a genuinely clean boot it just *works*, every time: a real feature map, two hundred and forty-two distinct values where a broken layer gives one. The "race" was me. A debug script I'd left in the boot sequence was quietly running a whole-graph MobileNet first — the one that wedges the engine — and poisoning every test that came after it. I deleted four lines and the coin-flip became a certainty. The firstconv was never flaky. I was.
+
+So the chain runs: conv0 computes, hands its real output down, the next layer reads it intact. And then it dies — at the first depthwise convolution, layer one. Real input going in, all zeros coming out.
+
+I spent the evening trying to make that layer lie to me, and it wouldn't. I matched its command stream to the vendor's, register for register — identical, forty-nine of them, down to the depthwise-mode bit and the weight-byte count. I filled its entire weight buffer with a single nonzero constant — output still zero. I reached past the multiply altogether and jammed a large number straight into the bias-add that the final stage hands to the output, the one value that should light every pixel up — and the output stayed flat zero. Weights, input, a forced constant on the very last stage: I changed all three, the layer ignored all three. It isn't computing wrong. It isn't computing at all. The depthwise op never fires and never writes, while a standard convolution on the exact same hardware path, one task earlier, paints a perfect picture.
+
+So it's the same shape of wall as the engage one — something the silicon does for the vendor's identical instructions and won't do for mine, living below every register I can read. Two doors to the same network, two trapdoors a floor apart: the whole-graph engage, and now the depthwise. The open driver is cleared on both — every byte I hand the chip matches the vendor's. What's left is underneath: a hardware trace, or the one structural thing the vendor does that I don't — it parks the weights in a megabyte of on-chip SRAM, and the RK3576 is the only chip in the family wired to need it. That's the next dig, and it's a kernel one.
