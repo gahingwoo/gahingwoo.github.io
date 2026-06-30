@@ -1,7 +1,7 @@
 ---
 title: "Bringing Up the RK3576 NPU on Mainline Linux"
 date: 2026-06-15
-lastmod: 2026-06-29
+lastmod: 2026-06-30
 tags: ["linux", "rockchip", "npu", "embedded", "rk3576"]
 description: "Chasing all-zero NPU output on the RK3576 — the wrong theories, the layouts I got right, and where the open road ends: a bug that lives below the registers, a race I could finally rule out, and the strangers who showed up at the same wall."
 showToc: true
@@ -1764,3 +1764,15 @@ So the chain runs: conv0 computes, hands its real output down, the next layer re
 I spent the evening trying to make that layer lie to me, and it wouldn't. I matched its command stream to the vendor's, register for register — identical, forty-nine of them, down to the depthwise-mode bit and the weight-byte count. I filled its entire weight buffer with a single nonzero constant — output still zero. I reached past the multiply altogether and jammed a large number straight into the bias-add that the final stage hands to the output, the one value that should light every pixel up — and the output stayed flat zero. Weights, input, a forced constant on the very last stage: I changed all three, the layer ignored all three. It isn't computing wrong. It isn't computing at all. The depthwise op never fires and never writes, while a standard convolution on the exact same hardware path, one task earlier, paints a perfect picture.
 
 So it's the same shape of wall as the engage one — something the silicon does for the vendor's identical instructions and won't do for mine, living below every register I can read. Two doors to the same network, two trapdoors a floor apart: the whole-graph engage, and now the depthwise. The open driver is cleared on both — every byte I hand the chip matches the vendor's. What's left is underneath: a hardware trace, or the one structural thing the vendor does that I don't — it parks the weights in a megabyte of on-chip SRAM, and the RK3576 is the only chip in the family wired to need it. That's the next dig, and it's a kernel one.
+
+## I wanted one wall, and the chip gave me two
+
+It would have been tidy if the depthwise and the dispatch were the same problem. They almost looked it: the depthwise gets chopped into two row-tiles and handed to the engine as a two-task job, and a two-task job is exactly what the whole-graph path chokes on. One wall, two faces. So I built the cleanest version of the question I could — took a convolution I *know* computes byte-perfect and duplicated it into two identical real tasks — and watched.
+
+Two tasks is enough to break it. Every variant I could write into the stream, the same story: the units light up, the geometry loads, the engine finishes the first task — and then declares itself done and stops, one task short, with nothing written. Every gauge I can read says it should have run; the only thing different from the version that works is a single field that says "two" instead of "one." So the multi-task wall is real, and it's the same kind I keep hitting — a thing the silicon does for the vendor's identical instructions and refuses for mine, a floor below every register.
+
+Then I pulled the two problems apart, and they came apart. There's a knob's worth of code that decides whether a wide layer gets tiled; I made the depthwise refuse to tile — one full-height task, a task count of one, the shape that works for every ordinary convolution. And the depthwise still drew nothing. Not garbage, not a half-filled buffer that would mean it overflowed — a clean, flat zero, sitting next to a first layer that computed a perfect picture on the same run. So the depthwise was never the dispatch. It fails as a single task, the same way it fails as two. It's the *kind* of layer, not the *number* of tasks.
+
+And on that clean single-task depthwise I ran out of things to try. I fed it constant weights — zero. A real feature map for input — zero. I reached past the multiply and forced a large number straight into the last arithmetic stage, the one value that has to show up at the output if anything does — zero. Three operands, three different parts of the pipeline, and the layer ignores all three. It isn't computing the wrong answer. It is producing no output at all, and nothing I can hand it changes that.
+
+So it's two walls, not one, and both live under the same floor: command streams I've matched to the vendor byte for byte, behavior the chip keeps to itself. I've run out of software to throw at the depthwise. The one thing left that the vendor does and I don't isn't a register or a command — it's *where the weights live*. The vendor parks them in a megabyte of SRAM on the NPU itself, and the RK3576 is the only chip in the family wired to need that. I don't think that's a coincidence anymore. Next I go into the kernel and put the weights where the chip wants them.
