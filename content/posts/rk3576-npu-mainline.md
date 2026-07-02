@@ -1,7 +1,7 @@
 ---
 title: "Bringing Up the RK3576 NPU on Mainline Linux"
 date: 2026-06-15
-lastmod: 2026-06-30
+lastmod: 2026-07-02
 tags: ["linux", "rockchip", "npu", "embedded", "rk3576"]
 description: "Chasing all-zero NPU output on the RK3576 — the wrong theories, the layouts I got right, and where the open road ends: a bug that lives below the registers, a race I could finally rule out, and the strangers who showed up at the same wall."
 showToc: true
@@ -16,13 +16,16 @@ stack is byte-perfect on the RK3588, so the bug is RK3576-specific. A month of a
 - **The int8 convolution is byte-correct now.** The "all-grey" wall was a fixed-point bug: the rescale
   multiplier went out at Q14 where the chip wants Q4 — 2¹⁰ too hot, so every pixel saturated. Fix that
   (plus a pad value and a bias term) and a single conv matches the CPU reference byte-for-byte.
-- **MobileNet end-to-end still returns zero**, behind two walls that live *below the registers*: the
-  command stream I send is byte-identical to the vendor's and the chip still behaves differently. One is
-  the whole-graph engage (the units won't re-arm for each task); the other is depthwise convolution (the
-  op never fires or writes, whatever I feed it — weights, input, even a forced constant on the last
-  stage). Ordinary convolutions compute fine on the same path.
+- **MobileNet end-to-end still returns zero**, behind what looked like two walls but turned out to be
+  one, living *below the registers*: the command stream I send is byte-identical to the vendor's and the
+  chip still behaves differently. The wall is multi-task dispatch — the compute units won't re-arm
+  themselves for each task the way the vendor's do — and the depthwise, which I'd taken for a second
+  separate wall, is just the first layer wide enough to be forced through it (I confirmed that by
+  instrumenting the vendor's own driver and watching its tiled depthwise run aligned and correct).
+  Ordinary single-task convolutions compute fine on the same path.
 - So **the open driver is exonerated** — every byte I hand the chip matches the vendor's; the gap is in
-  silicon execution. Next is a hardware trace.
+  silicon state, below what software can observe on either side. The one difference left untested is the
+  firmware (the vendor boots a secure TF-A + OP-TEE that mainline doesn't). That's the next dig.
 
 The rest is the long version — mostly me being wrong, in order.
 
@@ -1787,3 +1790,15 @@ Then I caught myself in a lie I'd been telling for weeks. My proof that two-task
 The vendor's own driver source closed the loop on *how*. It wakes its units with no enable-mask register at all — that register isn't even mapped on the vendor; reading it crashes the kernel — and with nothing in the command stream either: one pulse to start the sequencer, and each task's own stream re-arms the units as the sequencer walks it. Mine won't. My units only wake for an enable written *inside* the stream — and that write restarts the sequencer, so the instant there's a second task it loops on the first and nobody finishes. Take the in-stream enable out, to match the vendor, and my units never wake at all. The gap isn't a register or a sequence; I've matched every one. It's that the vendor's silicon re-arms itself from the pointer and mine has to be told, in the one way that breaks the count.
 
 And that reopens a door I thought I'd nailed shut. I'd "proved" the depthwise was a *separate* wall by running it as a single task — and it still drew zero, so it couldn't be the two-task problem. But the vendor never runs that layer as a single task: it's too wide for the on-chip line buffer, so the vendor always tiles it. My single-task version is a shape the vendor never makes — which means it can't cleanly prove anything. I can't actually tell the two walls apart yet. The depthwise might just be the first place the multi-task wall bites. The honest next step isn't another knob — it's a capture of what the vendor's sequencer does *between* tasks that mine doesn't, and then watching the depthwise run its natural tiles once the engage is fixed. One experiment, finally, instead of two ghosts.
+
+## Two ghosts, one wall
+
+So I taught the driver to show me each unit's engage bit — is it running or not — and read it the instant after the go-pulse, on a clean first boot so nothing was confounded. The working conv lights all four units up. The two-task version lights *none* of them: the sequencer ticks its task counter, declares itself done, and every compute unit stays dark. That's the multi-task wall, caught in the act — not a wrong answer, an engine that never starts.
+
+Then the depthwise, single-task, showed me something specific enough to get excited about: it *does* light up — all four units engaged — but its producer and its consumers end up pointing at different halves of the on-chip ping-pong buffer. The unit that fills the buffer walks to page two; the units that read it stay on page one, reading a page nothing was written to, so the output is zero. A real, register-level cause, and for an hour I thought I'd found the depthwise's own private bug.
+
+But it was a shape the vendor never makes. So I did the thing I'd been putting off: instrumented the vendor's *own* driver, booted its stack, and watched it run the same depthwise for real. It tiles the layer into small tasks and re-points every unit at page one at the start of *each* task — so its producer and consumers never drift apart. Its multi-task depthwise runs with all four units aligned on the same page and writes a full, real output. The "separate depthwise wall" was my single-task shape breaking a ping-pong the vendor keeps in step by tiling. There was only ever one wall. The depthwise is just the first layer wide enough to be forced through it.
+
+And there the honest trail ends, for now. Every byte I hand the chip matches the vendor's — the arming, the command stream, the init, the pulse — and single convolutions prove I'm addressing the silicon right. The vendor's units wake from the pointer arming and a single pulse; mine only wake from an in-stream enable that restarts the sequencer and so can't survive a second task. I wanted to watch *how* the vendor re-arms its units between tasks and copy it — but on the board it finishes a two-task layer in microseconds, faster than I can read a register, so the one move I need to see is below what software can observe, on either side. Knobs, static comparison, live capture: all spent. The only difference left that I haven't touched is underneath the driver entirely — the vendor boots a secure firmware (TF-A + OP-TEE, NPU clock and power over secure calls) that mainline doesn't, and a secure-world init is exactly the layer a capture can't reach. That's the next dig. It's a big one, and it's for a clearer-headed day.
+
+Where that leaves it: the convolution is byte-correct, the "two mysterious walls" turned out to be one, and that one is pinned to a single missing behavior — the units won't re-arm themselves for each task the way the vendor's do — that lives below every register I can read. The open driver is clean; the gap is in silicon state or the firmware that sets it. Not solved. But a month of *why is it all zero* has become one sharp, well-lit question, which is most of the work.
