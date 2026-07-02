@@ -24,8 +24,10 @@ stack is byte-perfect on the RK3588, so the bug is RK3576-specific. A month of a
   instrumenting the vendor's own driver and watching its tiled depthwise run aligned and correct).
   Ordinary single-task convolutions compute fine on the same path.
 - So **the open driver is exonerated** — every byte I hand the chip matches the vendor's; the gap is in
-  silicon state, below what software can observe on either side. The one difference left untested is the
-  firmware (the vendor boots a secure TF-A + OP-TEE that mainline doesn't). That's the next dig.
+  silicon state, below what software can observe on either side. I even booted the driver on top of a
+  mainline OP-TEE to rule out the firmware — same failure. **The way around** (not through): the wall only
+  bites *multi-task* jobs, so send each row-tile as its own single-task job, which the hardware runs. That's
+  the next build.
 
 The rest is the long version — mostly me being wrong, in order.
 
@@ -1802,3 +1804,11 @@ But it was a shape the vendor never makes. So I did the thing I'd been putting o
 And there the honest trail ends, for now. Every byte I hand the chip matches the vendor's — the arming, the command stream, the init, the pulse — and single convolutions prove I'm addressing the silicon right. The vendor's units wake from the pointer arming and a single pulse; mine only wake from an in-stream enable that restarts the sequencer and so can't survive a second task. I wanted to watch *how* the vendor re-arms its units between tasks and copy it — but on the board it finishes a two-task layer in microseconds, faster than I can read a register, so the one move I need to see is below what software can observe, on either side. Knobs, static comparison, live capture: all spent. The only difference left that I haven't touched is underneath the driver entirely — the vendor boots a secure firmware (TF-A + OP-TEE, NPU clock and power over secure calls) that mainline doesn't, and a secure-world init is exactly the layer a capture can't reach. That's the next dig. It's a big one, and it's for a clearer-headed day.
 
 Where that leaves it: the convolution is byte-correct, the "two mysterious walls" turned out to be one, and that one is pinned to a single missing behavior — the units won't re-arm themselves for each task the way the vendor's do — that lives below every register I can read. The open driver is clean; the gap is in silicon state or the firmware that sets it. Not solved. But a month of *why is it all zero* has become one sharp, well-lit question, which is most of the work.
+
+## I did the firmware dig, and then found the way around
+
+The firmware was the last thing I hadn't tried, so I tried it. I have a working mainline OP-TEE port for this chip — secure firmware, its own memory, passes its self-tests — so I built an image that boots the *same* rocket kernel on top of it, reserved OP-TEE's memory in the device tree, and ran the multi-task test again. OP-TEE really came up: its secure-world banner prints on the console, the memory firewall is live. And the multi-task job failed byte-for-byte identically — not one unit engaged, nothing written. So it isn't the presence of the secure firmware either. That was the last software-shaped stone to turn, and under it was the same wall.
+
+But somewhere in writing all that down, the obvious thing I'd been walking past finally registered. The wall only bites *multi-task* jobs. Single-task convolutions engage and run perfectly — I've leaned on that a hundred times in this post. The wide layers are only multi-task because one row-tile is all the on-chip buffer holds at once. So don't hand the hardware a multi-task job at all: send **each row-tile as its own single-task job** — its own input rows, its own weights, its own slice of the output — and let the kernel chain them, exactly the way it already chains one layer to the next. It's wasteful (the weights get re-staged for every tile instead of reused), but every job is then a task-count of one, and *that* the chip runs.
+
+I don't know yet that it'll carry a whole MobileNet — there's real work in making each tile a self-contained job, and more walls could be waiting past the first depthwise. But it's a road that goes *around* the one obstacle I've spent a month proving I can't go *through*, built entirely on the part of the pipeline I've already made byte-exact. After a month of turning over stones and finding the same wall under each, that's the first move in a while that isn't trying to break it. That's where I pick up next.
