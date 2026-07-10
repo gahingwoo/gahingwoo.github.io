@@ -22,7 +22,7 @@ and let it tell me I was wrong. I usually am, for a while. That's the fun part.
 So far that loop has taken me across most of the RK3576 boot chain and back:
 
 - **TF-A** — upstreamed a fix to Trusted Firmware-A, reviewed by engineers from
-  STMicroelectronics, Google, and Rockchip. (My first upstream patch to a security
+  STMicroelectronics, Arm, and Rockchip. (My first upstream patch to a security
   project.)
 - **OP-TEE** — wrote the RK3576 secure-world platform port: memory map, hardware TRNG,
   OTP-derived keys, secure boot. The base platform support is **merged into mainline
