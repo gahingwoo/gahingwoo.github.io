@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://gahingwoo.github.io/sitemap.xml

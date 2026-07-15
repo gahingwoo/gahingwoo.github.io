@@ -1,0 +1,99 @@
+# Hexo Configuration
+# https://hexo.io/docs/configuration.html
+
+# Site
+title: Gahing's Space
+subtitle: ''
+description: 'Upstream firmware and embedded Linux — Rockchip bring-up, secure boot, and NPU work from the gaps between hardware and mainline.'
+keywords:
+author: Ga Hing Woo (Jiaxing Hu)
+language: en
+timezone: ''
+
+# URL
+url: https://gahingwoo.github.io
+permalink: posts/:slug/
+permalink_defaults:
+pretty_urls:
+  trailing_index: true
+  trailing_html: true
+
+# Directory
+source_dir: source
+public_dir: public
+tag_dir: tags
+archive_dir: archives
+category_dir: categories
+code_dir: downloads/code
+i18n_dir: :lang
+skip_render:
+
+# Writing
+new_post_name: :title.md
+default_layout: post
+titlecase: false
+external_link:
+  enable: true
+  field: site
+  exclude: ''
+filename_case: 0
+render_drafts: false
+post_asset_folder: false
+relative_link: false
+future: true
+syntax_highlighter: highlight.js
+highlight:
+  line_number: true
+  auto_detect: false
+  tab_replace: '    '
+  wrap: true
+
+# Home page setting
+index_generator:
+  path: ''
+  per_page: 10
+  order_by: -date
+
+# Category & Tag
+default_category: uncategorized
+category_map:
+tag_map:
+
+# Metadata elements
+meta_generator: false
+
+# Date / Time format
+date_format: YYYY-MM-DD
+time_format: HH:mm:ss
+updated_option: 'mtime'
+
+# Pagination
+per_page: 10
+pagination_dir: page
+
+# Include / Exclude file(s)
+include:
+exclude:
+ignore:
+
+# Extensions
+theme: icarus
+
+# hexo-renderer-marked: disable hard line breaks so hand-wrapped prose
+# renders as normal paragraphs instead of one <br> per source line
+marked:
+  breaks: false
+
+# RSS feed (hexo-generator-feed)
+feed:
+  enable: true
+  type: atom
+  path: atom.xml
+  limit: 20
+
+# Sitemap (hexo-generator-sitemap)
+sitemap:
+  path: sitemap.xml
+
+# Deployment
+deploy:
