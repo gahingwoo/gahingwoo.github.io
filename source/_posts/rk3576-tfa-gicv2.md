@@ -21,7 +21,7 @@ description: Deleting one redundant line from Trusted Firmware-A's RK3576 platfo
   `plat/rockchip/rk3576/platform.mk` that was both redundant (the tree-wide default is
   already `0`) and wrong (RK3576 has no reason to route GICv2 Group 0 to EL3).
 - **It's still the first thing I sent to Trusted Firmware-A**, and it got read closely
-  by engineers from ST, Google, and Rockchip before it landed.
+  by engineers from ST, Arm, and Rockchip before it landed.
 - The point isn't the diff size — it's what upstream review actually asks of you even
   when the change is nearly nothing: *is this safe for every configuration, not just
   yours?*
@@ -33,7 +33,7 @@ description: Deleting one redundant line from Trusted Firmware-A's RK3576 platfo
 
 This is the smallest patch I've ever upstreamed: it *removes* one line. Net diff is
 negative. But it's also the first thing I sent to Trusted Firmware-A, and it got read
-by engineers from ST, Google, and Rockchip before it landed. So it's a decent little
+by engineers from ST, Arm, and Rockchip before it landed. So it's a decent little
 story about what upstreaming actually feels like, even when the change is nearly
 nothing.
 
