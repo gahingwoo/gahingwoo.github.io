@@ -66,5 +66,5 @@ the same hardware, I'd genuinely like to hear from you.
 
 ## Say hi
 
-[huhuvmb88@outlook.com](mailto:huhuvmb88@outlook.com) ·
+[gahing@gahingwoo.com](mailto:gahing@gahingwoo.com) ·
 [github.com/gahingwoo](https://github.com/gahingwoo)
