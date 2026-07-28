@@ -11,7 +11,7 @@ language: en
 timezone: ''
 
 # URL
-url: https://gahingwoo.github.io
+url: https://blog.gahingwoo.com
 permalink: posts/:slug/
 permalink_defaults:
 pretty_urls:
