@@ -11,9 +11,25 @@ tags:
   - npu
   - embedded
   - rk3576
-description: "Chasing all-zero NPU output on the RK3576 — the wrong theories, the layouts I got right, and where the open road ends: a bug that lives below the registers, a race I could finally rule out, and the strangers who showed up at the same wall — and then the wall came down, and showed a deeper one. I chased that deeper wall until every road out of it was closed, on purpose, and wrote down exactly how."
-updated: "2026-07-10"
+description: "A month of all-zero NPU output on the RK3576, the wrong theories in order, and a negative result I got wrong. Written in July 2026, when I thought the wall lived in silicon below the registers. It was a 16-bit field written as 12. Corrected at the top, with a postscript at the bottom."
+updated: "2026-08-18"
 ---
+
+> **Correction, 18 August 2026.** Everything below is what I believed on 10 July, and the
+> conclusion it builds to is wrong. Chained layers do compute. MobileNet V1 now runs end to
+> end on the NPU through this stack and returns the CPU's class. The wall I described as
+> living below the registers, in silicon state no software can observe, was a register field:
+> `PC_TASK_CON` carries a 16-bit task number on the RK3576 where the RK3588-derived header
+> assumes 12, so the driver asked the hardware for 28673 tasks. On the development fork this
+> post is mostly about, it was not even that. It was fifteen ordinary faults in register and
+> buffer generation, each one smaller than the resolution of the test I was checking with.
+> The phrase *byte exact* is withdrawn too: the convolution is correct to within one count,
+> which is not the same word.
+>
+> I am leaving the post standing rather than editing the conclusion out of it, because how the
+> error survived is the more useful half. Version 2 of the preprint says all of this properly:
+> <https://doi.org/10.5281/zenodo.21990992>. There is a postscript at the bottom of this page
+> with the short version.
 
 ## TL;DR
 
@@ -1988,6 +2004,23 @@ What's left is a shape, not a guess: a compute-accumulate stage that arms itself
 The whole falsification ledger — every dimension, every test, every result — is in the [rocket bring-up repo](https://github.com/gahingwoo/linux-rk3576-npu/blob/main/CHAINED-CMAC-STOPPING-POINT.md). Kiln keeps running whole networks in the meantime, on the vendor's terms, which is still the honest trade I described it as three chapters ago. If new evidence ever moves this — vendor documentation of the sequencer, or a look inside the microcode I don't have today — that page is where I'll say so.
 
 </details>
+
+## Postscript, 18 August 2026: it was software, on both trees
+
+I parked this on 10 July and it stayed parked for a month. It came unparked on 7 August, and not because of anything I built.
+
+The series I had posted upstream had one register field wrong. `PC_TASK_CON` carries a 16-bit task number on the RK3576; the register header this driver inherited is RK3588-derived and lays out 12. So `0x00007001` went out meaning one task with ping-pong enabled, and the hardware read it as a request for 28673 tasks with the count-clear pulse landing on a reserved bit. Six posted revisions asked for 28673 tasks. Rockchip's Chaoyi Chen confirmed the layout on the list three days later, including a fourth control bit at BIT(18) that a trace could not have named.
+
+I found it by taking an ordered trace of every register write in one submit and diffing it against the vendor's, on the same board, aligned on *values* instead of on register addresses. Exactly one word differed in the whole submit. The comparison tool I had used all month aligned on the address, and an address-aligned diff is blind to a different value written to a matched address, which is precisely the shape of a field-layout error. Ordering was never the problem. The alignment key was. My instrument could not have shown me this, and that is the part of the month worth keeping.
+
+It gets worse before it gets better. I had already found the right width. On 14 June I read `pc_task_number_bits = 16` out of the vendor driver and wrote it into my development fork with ten lines explaining where it came from. It did not look like a root cause at the time, because that branch was failing for fifteen other reasons and getting this one register right did not make it compute, so it stayed one line among many and never travelled to the branch I posted for review. 7 August was not a discovery. It was a re-derivation of something I had established almost eight weeks earlier and lost.
+
+And the development fork, the tree this whole post is about, never had the register problem at all. What stood between it and a working network was those fifteen ordinary faults in register and buffer generation, every one of them individually smaller than the resolution of the oracle I was checking with, an oracle that could not tell a recomputed output buffer from one that was never written at all.
+
+Two people named the right doubt before I did. One supplied the correct counterexample and the correct discriminating experiment nineteen days before the fix, and I declined both on the strength of the comparison that could not have seen the difference. One named the mechanism two days early, reasoning from the RK3588 manual without owning the hardware. Both are in the paper by name.
+
+MobileNet V1 now classifies end to end on the NPU through the open stack, on my development tree, and returns the class the CPU returns with the same top five in the same order. The full account, including what is still open, is version 2 of the preprint at <https://doi.org/10.5281/zenodo.21990992>. Version 1 stays where it was, at <https://doi.org/10.5281/zenodo.21348017>, so the two can be compared.
+
 
 <script src="/js/reveal-toc.js" defer></script>
 
