@@ -112,6 +112,9 @@ navbar:
         Archives: /archives
         Categories: /categories
         About: /about
+        # Back to the main site, so a reader who arrived from there is not
+        # stranded on a differently styled satellite.
+        Main site: https://gahingwoo.com
     # Links to be shown on the right of the navigation bar
     links:
         Github:
